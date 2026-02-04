@@ -1,0 +1,4 @@
+.venv/
+.DS_Store
+sujet-04.pdf
+__pycache__/
