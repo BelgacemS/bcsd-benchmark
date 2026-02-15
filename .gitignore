@@ -1,6 +1,10 @@
+# Environnements Python
 .venv/
+venv/
+__pycache__/
 .DS_Store
 sujet-04.pdf
-__pycache__/
-dataset/
-docs/
+rosetta_scraper_guide.pdf
+
+# Sortie locale d’un run complet (pour l'instant le dataset complet va sur GCP)
+data/output/

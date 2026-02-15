@@ -13,11 +13,11 @@ Ce dossier contient les scripts de collecte de code source depuis différentes p
 #### RosettaCode
 
 ```bash
-python scrapers/rosetta_scraper.py -l 20 -v (exemple)
+python src/scrapers/rosetta_scraper.py -l 20 -v (exemple)
 ```
 
 Options :
-- `-o <dir>` : dossier de sortie (défaut: `dataset`)
+- `-o <dir>` : dossier de sortie (défaut: `data/sample` ; pour un run complet vers GCP, passer un chemin bucket ou temporaire)
 - `-l N` : N max de tâches
 - `-v` : mode verbose (affichage détaillé pendant l'exécution du scraper)
 - `-m N` : impose qu'une tâche possède au moins N langages différents parmi C, C++, Rust, Go (important pour la détection de similarité binaire)
@@ -97,24 +97,26 @@ Ces headers sont correctement détectés pour délimiter les sections, même s'i
 
 Chaque scraper doit :
 1. Extraire du code source depuis une plateforme (ex: GitHub, LeetCode, …)
-2. Sauvegarder dans `dataset/<source>/<task>/<Langage>/impl_XX.ext`
-3. Générer un fichier de métadonnées `dataset/<source>_metadata.json`
+2. Sauvegarder dans `<output_dir>/<source>/<task>/<Langage>/impl_XX.ext`
+3. Générer un fichier de métadonnées `<output_dir>/<source>_metadata.json`
 4. Valider les blocs via `CodeValidator` (ou équivalent)
+
+Par défaut la sortie est `data/sample/`. Pour un run complet, utiliser `-o` vers un chemin GCP ou temporaire (le dataset complet est envoyé sur GCP, pas stocké localement).
 
 ### Structure de sortie commune
 
 ```
-dataset/
-├── rosetta_code/
-│   ├── <task>/
-│   │   ├── C/
-│   │   │   └── impl_01.c
-│   │   ├── Cpp/
-│   │   │   └── impl_01.cpp
-│   │   ├── Rust/
-│   │   │   └── impl_01.rs
-│   │   └── Go/
-│   │       └── impl_01.go
-├── <autre_source>/
-│   └── ...
+data/
+└── sample/                  (échantillon, commité sur git)
+    └── rosetta_code/
+        ├── <task>/
+        │   ├── C/
+        │   │   └── impl_01.c
+        │   ├── Cpp/
+        │   │   └── impl_01.cpp
+        │   ├── Rust/
+        │   │   └── impl_01.rs
+        │   └── Go/
+        │       └── impl_01.go
+        └── ...
 ```

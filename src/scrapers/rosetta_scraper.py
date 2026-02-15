@@ -272,7 +272,7 @@ def task_name_to_snake_case(task_name):
 
 class RosettaScraper:
     
-    def __init__(self, output_dir: str = "dataset", delay: float = 0.5, strict_validation: bool = True):
+    def __init__(self, output_dir: str = "data/sample", delay: float = 0.5, strict_validation: bool = True):
 
         self.base_dir = Path(output_dir)
         self.rosetta_dir = self.base_dir / "rosetta_code"
@@ -625,7 +625,7 @@ class RosettaScraper:
             "scrape_date": datetime.now().isoformat(),
             "total_tasks": self.stats["tasks_saved"],
             "implementations": self.stats["implementations"],
-            "structure": "dataset/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>",
+            "structure": "<output_dir>/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>",
         }
         
         metadata_file = self.base_dir / "rosetta_metadata.json"
@@ -643,8 +643,8 @@ def main():
     
     parser.add_argument(
         "-o", "--output",
-        default="dataset",
-        help="Dossier racine (attention default : dataset )"
+        default="data/sample",
+        help="Dossier de sortie (défaut : data/sample ; pour un run complet, passer -o vers GCP ou un chemin temporaire)"
     )
     parser.add_argument(
         "-l", "--limit",

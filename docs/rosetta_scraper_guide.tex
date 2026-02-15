@@ -1,0 +1,713 @@
+\documentclass[12pt,a4paper]{article}
+
+% === Packages ===
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+
+
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codegreen}{HTML}{2E7D32}
+\definecolor{codepurple}{HTML}{7B1FA2}
+\definecolor{codeorange}{HTML}{E65100}
+
+\lstdefinestyle{python}{
+    language=Python,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codepurple}\bfseries,
+    stringstyle=\color{codeorange},
+    commentstyle=\color{codegreen}\itshape,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{black!20},
+    showstringspaces=false,
+    tabsize=4,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    literate={é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {à}{{\`a}}1 {ù}{{\`u}}1 {ç}{{\c{c}}}1,
+}
+
+\lstset{style=python}
+
+\newcommand{\regex}[1]{\texttt{\small #1}}
+\newcommand{\py}[1]{\lstinline[style=python]{#1}}
+
+\title{%
+    \textbf{Guide technique détaillé}\\[0.5em]
+    \Large\texttt{rosetta\_scraper.py}\\[0.3em]
+    \large Projet BCSD Benchmark
+}
+\author{Document interne --- ne pas diffuser}
+\date{\today}
+
+% ============================================================
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introduction}
+
+Ce document décrit en détail le fonctionnement du script \texttt{rosetta\_scraper.py}, qui constitue la brique de \textbf{collecte de données} du projet BCSD Benchmark.
+
+\subsection{Objectif du script}
+
+Récupérer automatiquement des implémentations \textbf{C}, \textbf{C++}, \textbf{Rust} et \textbf{Go} de tâches identiques depuis \href{https://rosettacode.org}{RosettaCode}, les valider via des heuristiques, puis les sauvegarder dans une structure de dataset reproductible.
+
+\subsection{Place dans le projet}
+
+\begin{enumerate}
+    \item \textbf{Collecte} (ce script) : extraction des sources C/C++/Rust/Go depuis RosettaCode.
+    \item \textbf{Compilation} (à venir) : génération de binaires à partir des sources.
+    \item \textbf{Benchmark BCSD} (à venir) : évaluation de méthodes de détection de similarité binaire.
+\end{enumerate}
+
+% ============================================================
+\section{Vue d'ensemble du flux}
+
+Le script suit un pipeline linéaire pour chaque tâche :
+
+\begin{enumerate}
+    \item \textbf{Liste des tâches} : appel à l'API MediaWiki pour récupérer toutes les tâches de la catégorie \texttt{Programming\_Tasks}.
+    \item \textbf{Contenu wikitext} : pour chaque tâche, récupération du texte brut (wikitext) de la page.
+    \item \textbf{Détection de tous les headers} : repérage de \textbf{toutes} les sections de langages (pas seulement C/C++/Rust/Go), y compris les headers combinés (ex: \texttt{==\{\{header|Icon\}\} and \{\{header|Unicon\}\}==}).
+    \item \textbf{Découpage en sections} : chaque section cible est délimitée par le prochain header de \textbf{n'importe quel langage}, évitant la contamination inter-langages.
+    \item \textbf{Extraction des blocs} : extraction du code dans les balises \texttt{<syntaxhighlight>} ou \texttt{<lang>}.
+    \item \textbf{Filtrage C\#} : rejet des blocs qui ressemblent à du C\# (uniquement pour les sections C/C++).
+    \item \textbf{Validation} (\texttt{CodeValidator}) : série d'heuristiques pour s'assurer que le bloc est bien du langage cible, incluant la détection de ~20 autres langages.
+    \item \textbf{Fusion intelligente} (\texttt{\_merge\_fragments}) : les blocs bibliothèque (sans \texttt{main()}) sont fusionnés avec les blocs qui ont un \texttt{main()} pour produire des programmes complets.
+    \item \textbf{Sauvegarde} : écriture du fichier \texttt{impl\_XX.c}, \texttt{.cpp}, \texttt{.rs} ou \texttt{.go} dans la bonne arborescence.
+    \item \textbf{Statistiques et métadonnées} : affichage des stats et écriture de \texttt{rosetta\_metadata.json}.
+\end{enumerate}
+
+% ============================================================
+\section{Imports et constantes}
+
+\begin{lstlisting}
+import re          # Expressions regulieres (regex)
+import json        # Lecture/ecriture JSON
+import time        # Pauses entre requetes (time.sleep)
+import argparse    # Gestion des arguments en ligne de commande
+from pathlib import Path       # Chemins de fichiers multi-OS
+from typing import Optional    # Annotations de type (valeur ou None)
+import requests    # Requetes HTTP vers l'API RosettaCode
+from tqdm import tqdm          # Barre de progression
+
+API_URL = "https://rosettacode.org/w/api.php"
+\end{lstlisting}
+
+\begin{description}[leftmargin=3cm, style=nextline]
+    \item[\texttt{re}] Module standard pour les expressions régulières. Utilisé pour parser le wikitext, détecter des patterns de code, et nettoyer les noms de tâches.
+    \item[\texttt{json}] Sérialisation/désérialisation JSON. Utilisé pour écrire le fichier de métadonnées.
+    \item[\texttt{time}] Fonction \py{time.sleep()} pour ajouter un délai entre les requêtes API.
+    \item[\texttt{argparse}] Définition et parsing des arguments CLI (\texttt{-l}, \texttt{-v}, etc.).
+    \item[\texttt{Path}] Classe de \texttt{pathlib} pour manipuler les chemins de fichiers de manière portable (Windows, macOS, Linux). L'opérateur \texttt{/} permet de concaténer des chemins : \py{Path("data/sample") / "rosetta_code"}.
+    \item[\texttt{Optional}] Annotation de type indiquant qu'une valeur peut être du type indiqué \textbf{ou} \py{None}. Exemple : \py{Optional[str]} = \py{str | None}.
+    \item[\texttt{requests}] Librairie HTTP pour envoyer des requêtes GET à l'API RosettaCode.
+    \item[\texttt{tqdm}] Affiche une barre de progression dans le terminal pendant l'itération.
+    \item[\texttt{API\_URL}] Endpoint de l'API MediaWiki de RosettaCode. Toutes les requêtes passent par cette URL.
+\end{description}
+
+% ============================================================
+\section{Classe \texttt{CodeValidator}}
+
+\subsection{Rôle}
+
+Décider si un bloc de code extrait doit être \textbf{gardé} ou \textbf{rejeté}, et fournir une \textbf{raison de rejet} pour les statistiques.
+
+\subsection{Constructeur \texttt{\_\_init\_\_}}
+
+\begin{lstlisting}
+def __init__(self, strict_mode=True, check_compilation=False,
+             min_chars=None, min_lines=None):
+\end{lstlisting}
+
+\begin{description}[leftmargin=3.5cm, style=nextline]
+    \item[\texttt{strict\_mode}] Si \py{True} (défaut), les seuils de validation sont plus élevés et il faut au moins 2 marqueurs du langage cible pour accepter un bloc.
+    \item[\texttt{check\_compilation}] Prévu pour une future vérification par compilation réelle ; non utilisé actuellement.
+    \item[\texttt{min\_chars}] Nombre minimum de caractères (après suppression des commentaires). Défaut : 80 en strict, 30 sinon.
+    \item[\texttt{min\_lines}] Nombre minimum de lignes non vides. Défaut : 5 en strict, 3 sinon.
+\end{description}
+
+Le constructeur initialise également trois listes de \textbf{regex compilées} (compilées une seule fois avec \py{re.compile()} pour de meilleures performances).
+
+\subsubsection{Liste \texttt{\_wiki\_patterns}}
+
+Détecte la présence de balisage wiki (wikitext) dans un bloc. Si l'un de ces motifs apparaît, le bloc est rejeté.
+
+\begin{longtable}{p{7cm}p{7cm}}
+\toprule
+\textbf{Pattern} & \textbf{Ce qu'il détecte} \\
+\midrule
+\regex{\textbackslash\{\textbackslash\{\textbackslash s*header\textbackslash s*\textbackslash|}
+    & Template \texttt{\{\{header|...\}\}} \\
+\regex{\textbackslash\{\textbackslash\{\textbackslash s*lang\textbackslash s*\textbackslash|}
+    & Template \texttt{\{\{lang|...\}\}} \\
+\regex{\textbackslash[\textbackslash[\textbackslash s*Category:}
+    & Lien de catégorie wiki \\
+\regex{<ref\textbackslash b}
+    & Balise ouvrante \texttt{<ref>} \\
+\regex{</ref>}
+    & Balise fermante \texttt{</ref>} \\
+\bottomrule
+\end{longtable}
+
+\subsubsection{Liste \texttt{\_non\_c\_patterns}}
+
+Détecte des motifs typiques d'\textbf{autres langages}. Si \textbf{au moins 2} de ces motifs matchent, le bloc est rejeté comme \texttt{"autre\_langage"}. Cette liste couvre environ \textbf{20 langages} pour maximiser le filtrage.
+
+\begin{longtable}{p{7.5cm}p{6.5cm}}
+\toprule
+\textbf{Pattern} & \textbf{Langage détecté} \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Python ---}} \\
+\regex{def\textbackslash s+\textbackslash w+\textbackslash s*\textbackslash(.*\textbackslash)\textbackslash s*:}
+    & Définition de fonction \\
+\regex{class\textbackslash s+\textbackslash w+\textbackslash s*:}
+    & Déclaration de classe \\
+\regex{print\textbackslash s*\textbackslash(}
+    & Appel print() \\
+\midrule
+\multicolumn{2}{l}{\textit{--- JavaScript ---}} \\
+\regex{console\textbackslash.log\textbackslash s*\textbackslash(}
+    & Console.log \\
+\regex{function\textbackslash s+\textbackslash w+\textbackslash s*\textbackslash(}
+    & Déclaration de fonction \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Java ---}} \\
+\regex{System\textbackslash.out\textbackslash.print}
+    & Sortie standard \\
+\regex{public\textbackslash s+class}
+    & Déclaration de classe \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Factor ---}} \\
+\regex{USING\textbackslash s*:} & Directive USING \\
+\regex{IN\textbackslash s*:\textbackslash s+} & Directive IN \\
+\regex{TUPLE\textbackslash s*:\textbackslash s+} & Déclaration TUPLE \\
+\regex{:\textbackslash s+\textbackslash S+\textbackslash s+\textbackslash([...]-{}-[...]\textbackslash)} & Définition de mot Factor \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Fortran ---}} \\
+\regex{program\textbackslash s+\textbackslash w+} & Début de programme \\
+\regex{implicit\textbackslash s+none} & Directive implicit \\
+\regex{subroutine\textbackslash s+\textbackslash w+} & Déclaration subroutine \\
+\regex{INTEGER\textbackslash s*::} & Déclaration de type \\
+\midrule
+\multicolumn{2}{l}{\textit{--- COBOL ---}} \\
+\regex{>{}>SOURCE} & Directive source \\
+\regex{IDENTIFICATION\textbackslash s+DIVISION} & En-tête COBOL \\
+\regex{PROGRAM-ID\textbackslash.} & Identifiant programme \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Lisp / Scheme / Clojure ---}} \\
+\regex{(defun}, \regex{(define}, \regex{(defpackage}, \regex{(ns}, \regex{(defconstant}
+    & Définitions Lisp \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Pascal / Delphi ---}} \\
+\regex{\{\$APPTYPE} & Directive compilateur \\
+\regex{program\textbackslash s+\textbackslash w+;} & Début de programme \\
+\regex{procedure\textbackslash s+\textbackslash w+;} & Déclaration procedure \\
+\midrule
+\multicolumn{2}{l}{\textit{--- D language ---}} \\
+\regex{import\textbackslash s+std\textbackslash.\textbackslash w+} & Import standard D \\
+\regex{import\textbackslash s+core\textbackslash.\textbackslash w+} & Import core D \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Haskell ---}} \\
+\regex{import\textbackslash s+Data\textbackslash.} & Import Data \\
+\regex{import\textbackslash s+Control\textbackslash.} & Import Control \\
+\regex{\{-\#} & Pragma GHC \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Erlang ---}} \\
+\regex{-module(} & Déclaration module \\
+\regex{-export(} & Export de fonctions \\
+\midrule
+\multicolumn{2}{l}{\textit{--- BASIC ---}} \\
+\regex{\^{}\textbackslash d+\textbackslash s+rem} & Commentaire numéroté \\
+\regex{\^{}\textbackslash d+\textbackslash s+\textbackslash w+} & Ligne numérotée \\
+\midrule
+\multicolumn{2}{l}{\textit{--- OCaml / F\# ---}} \\
+\regex{let\textbackslash s+rec} & Fonction récursive \\
+\regex{open\textbackslash s+System} & Import System \\
+\regex{|>\textbackslash s*\textbackslash w+} & Pipe operator \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Nim ---}} \\
+\regex{proc\textbackslash s+\textbackslash w+.*=} & Déclaration proc \\
+\regex{import\textbackslash s+\textbackslash w+,\textbackslash s*\textbackslash w+} & Multi-import \\
+\midrule
+\multicolumn{2}{l}{\textit{--- Autres ---}} \\
+\regex{load\textbackslash s+".*\textbackslash.ring"} & Ring \\
+\regex{/\textbackslash*REXX} & REXX \\
+\regex{use\textbackslash s+strict} & Perl \\
+\regex{my\textbackslash s+\$\textbackslash w+} & Perl \\
+\regex{require\textbackslash s+[']} & Ruby \\
+\regex{puts\textbackslash s+} & Ruby \\
+\regex{procedure\textbackslash s+\textbackslash w+\textbackslash s*\textbackslash(} & Icon / Unicon \\
+\regex{every\textbackslash b.*:=\textbackslash s*!} & Icon / Unicon \\
+\bottomrule
+\end{longtable}
+
+\textit{Note :} le flag \texttt{re.MULTILINE} fait que \regex{\^{}} matche le début de \textbf{chaque ligne} (pas seulement le début de toute la chaîne). Le flag \texttt{re.IGNORECASE} rend la recherche insensible à la casse.
+
+\subsubsection{Dictionnaire \texttt{\_lang\_markers}}
+
+Dictionnaire indexé par langage. Chaque entrée contient une liste de regex détectant des marqueurs typiques du langage cible. En mode strict, il faut \textbf{au moins 2} de ces motifs pour accepter le bloc.
+
+\paragraph{Marqueurs C}
+
+\begin{longtable}{p{8cm}p{6cm}}
+\toprule
+\textbf{Pattern} & \textbf{Ce qu'il détecte} \\
+\midrule
+\regex{\#\textbackslash s*include\textbackslash b}
+    & Directive préprocesseur \\
+\regex{\textbackslash bint\textbackslash b|\textbackslash bvoid\textbackslash b|...}
+    & Types C : \texttt{int}, \texttt{void}, \texttt{char}, \texttt{double}, \texttt{float}, \texttt{long}, \texttt{short}, \texttt{unsigned}, \texttt{signed} \\
+\regex{\textbackslash bprintf\textbackslash s*\textbackslash(|...}
+    & Fonctions C : \texttt{printf}, \texttt{scanf}, \texttt{malloc}, \texttt{free}, \texttt{puts} \\
+\regex{\textbackslash bstruct\textbackslash b|...}
+    & Mots-clés C : \texttt{struct}, \texttt{typedef}, \texttt{enum}, \texttt{union} \\
+\regex{\textbackslash breturn\textbackslash b}
+    & Mot-clé \texttt{return} \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Marqueurs C++}
+
+\begin{longtable}{p{8cm}p{6cm}}
+\toprule
+\textbf{Pattern} & \textbf{Ce qu'il détecte} \\
+\midrule
+\regex{\#\textbackslash s*include\textbackslash b}
+    & Directive préprocesseur \\
+\regex{\textbackslash bint\textbackslash b|\textbackslash bvoid\textbackslash b|...}
+    & Types C/C++ \\
+\regex{\textbackslash bstd::\textbackslash b|...}
+    & Marqueurs C++ : \texttt{std::}, \texttt{cout}, \texttt{cin}, \texttt{string}, \texttt{vector<} \\
+\regex{\textbackslash bnamespace\textbackslash b|...}
+    & Mots-clés C++ : \texttt{namespace}, \texttt{template}, \texttt{class} \\
+\regex{\textbackslash bstruct\textbackslash b|...}
+    & Mots-clés C : \texttt{struct}, \texttt{typedef}, \texttt{enum}, \texttt{union} \\
+\regex{\textbackslash breturn\textbackslash b}
+    & Mot-clé \texttt{return} \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Marqueurs Rust}
+
+\begin{longtable}{p{8cm}p{6cm}}
+\toprule
+\textbf{Pattern} & \textbf{Ce qu'il détecte} \\
+\midrule
+\regex{\textbackslash bfn\textbackslash s+\textbackslash w+}
+    & Définition de fonction \\
+\regex{\textbackslash blet\textbackslash s+(mut\textbackslash s+)?\textbackslash w+}
+    & Déclaration de variable \\
+\regex{\textbackslash bimpl\textbackslash b|\textbackslash bpub\textbackslash b|...}
+    & Mots-clés : \texttt{impl}, \texttt{pub}, \texttt{mod}, \texttt{use} \\
+\regex{\textbackslash bmatch\textbackslash b}
+    & Pattern matching \\
+\regex{\textbackslash bprintln!\textbackslash s*\textbackslash(|...}
+    & Macros : \texttt{println!}, \texttt{print!}, \texttt{format!} \\
+\regex{\textbackslash bOption\textbackslash b|\textbackslash bResult\textbackslash b|...}
+    & Types : \texttt{Option}, \texttt{Result}, \texttt{Some}, \texttt{None}, \texttt{Ok}, \texttt{Err} \\
+\regex{->|::|\textbackslash bunwrap\textbackslash s*\textbackslash(}
+    & Opérateurs et méthodes Rust \\
+\regex{\&str|\&mut\textbackslash b|\&self\textbackslash b}
+    & Références Rust \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Marqueurs Go}
+
+\begin{longtable}{p{8cm}p{6cm}}
+\toprule
+\textbf{Pattern} & \textbf{Ce qu'il détecte} \\
+\midrule
+\regex{\textbackslash bfunc\textbackslash s+\textbackslash w+}
+    & Définition de fonction \\
+\regex{\textbackslash bpackage\textbackslash s+\textbackslash w+}
+    & Déclaration de package \\
+\regex{\textbackslash bimport\textbackslash s*[\textbackslash("]}
+    & Import de modules \\
+\regex{\textbackslash bfmt\textbackslash.\textbackslash w+}
+    & Appels au package \texttt{fmt} \\
+\regex{:=}
+    & Déclaration courte de variable \\
+\regex{\textbackslash brange\textbackslash b|\textbackslash bdefer\textbackslash b|...}
+    & Mots-clés : \texttt{range}, \texttt{defer}, \texttt{chan}, goroutines \\
+\regex{\textbackslash bPrintln\textbackslash b|...}
+    & Fonctions : \texttt{Println}, \texttt{Sprintf}, \texttt{Printf} \\
+\regex{\textbackslash breturn\textbackslash b}
+    & Mot-clé \texttt{return} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Méthode \texttt{validate(code, lang)}}
+
+Point d'entrée de la validation. Enchaîne les vérifications dans l'ordre suivant :
+
+\begin{lstlisting}
+def validate(self, code: str, lang: str):
+    cleaned = code.strip()
+    if not cleaned:                        return False, "vide"
+    if self.has_wiki_markup(cleaned):      return False, "wikitext"
+    stripped = self._strip_comments(cleaned)
+    if len(stripped) < self.min_chars or
+       self.count_lines(stripped) < self.min_lines:
+                                           return False, "trop_court"
+    if self.looks_like_other_language(stripped):
+                                           return False, "autre_langage"
+    if not self.has_code_shape(stripped):   return False, "pas_du_code"
+    if self.strict_mode and not self.has_lang_markers(stripped, lang):
+                                           return False, "marqueurs_insuffisants"
+    return True, "ok"
+\end{lstlisting}
+
+Chaque étape retourne un tuple \py{(bool, str)} : accepté ou non, avec la raison de rejet. La raison est ensuite comptabilisée dans les statistiques.
+
+\subsection{Méthode \texttt{\_strip\_comments(code)}}
+
+Supprime les commentaires C/C++ :
+\begin{itemize}
+    \item \regex{//.*} : commentaire sur une ligne (du \texttt{//} jusqu'à la fin de la ligne).
+    \item \regex{/\textbackslash*.*?\textbackslash*/} avec \texttt{re.DOTALL} : commentaire bloc (le \texttt{.} matche aussi les retours à la ligne, \texttt{*?} = non gourmand).
+\end{itemize}
+
+\subsection{Méthode \texttt{count\_lines(code)}}
+
+Compte le nombre de \textbf{lignes non vides} dans le code. Utilise \py{code.splitlines()} pour découper en lignes, puis filtre celles qui ne sont pas uniquement des espaces.
+
+\subsection{Méthode \texttt{has\_wiki\_markup(code)}}
+
+Retourne \py{True} si au moins un des \texttt{\_wiki\_patterns} est trouvé dans le code. Utilise \py{any(pat.search(code) for pat in ...)} pour court-circuiter dès le premier match.
+
+\subsection{Méthode \texttt{looks\_like\_other\_language(code)}}
+
+Compte combien de \texttt{\_non\_c\_patterns} matchent. Si \textbf{au moins 2} matchent, retourne \py{True}. On exige 2 (et non 1) pour réduire les faux positifs.
+
+\subsection{Méthode \texttt{has\_code\_shape(code, lang)}}
+
+Vérifie des conditions minimales pour que le texte ressemble à du code. Le comportement est adapté selon le langage :
+
+\begin{enumerate}
+    \item \textbf{Pour Go et Rust} : présence d'au moins un caractère parmi \texttt{\{}, \texttt{\}} (regex \regex{[\{\}]}). Ces langages n'utilisent pas systématiquement le point-virgule.
+    \item \textbf{Pour C et C++} : présence d'au moins un caractère parmi \texttt{;}, \texttt{\{}, \texttt{\}} (regex \regex{[;\{\}]}).
+    \item \textbf{Pour tous} : présence d'au moins une forme d'appel de fonction, c'est-à-dire un identifiant suivi d'une parenthèse (regex \regex{\textbackslash w\textbackslash s*\textbackslash(}).
+\end{enumerate}
+
+\subsection{Méthode \texttt{has\_lang\_markers(code, lang)}}
+
+Récupère la liste de marqueurs correspondant au langage \texttt{lang} dans le dictionnaire \texttt{\_lang\_markers}. Compte combien de ces marqueurs matchent dans le code. Si au moins 2 matchent, retourne \py{True}. Si le langage n'est pas dans le dictionnaire, retourne \py{True} par défaut. Utilisée uniquement en \texttt{strict\_mode}.
+
+% ============================================================
+\section{Fonction \texttt{task\_name\_to\_snake\_case}}
+
+Transforme un nom de tâche RosettaCode (ex: \texttt{"Binary search"}) en nom de dossier sûr (ex: \texttt{"binary\_search"}).
+
+\begin{lstlisting}
+def task_name_to_snake_case(task_name):
+    name = re.sub(r'[^\w\s]', '_', task_name) # caracteres speciaux -> _
+    name = re.sub(r'\s+', '_', name)           # espaces -> _
+    name = name.lower()                        # minuscules
+    name = re.sub(r'_+', '_', name)            # __ -> _
+    name = name.strip('_')                     # retirer _ en debut/fin
+    return name
+\end{lstlisting}
+
+Étapes :
+\begin{enumerate}
+    \item \regex{[\^{}\textbackslash w\textbackslash s]} : tout caractère qui n'est ni lettre/chiffre/\texttt{\_} ni espace → remplacé par \texttt{\_}.
+    \item \regex{\textbackslash s+} : un ou plusieurs espaces → remplacés par un seul \texttt{\_}.
+    \item Passage en minuscules.
+    \item \regex{\_+} : plusieurs \texttt{\_} consécutifs → un seul \texttt{\_}.
+    \item \py{strip('_')} : retrait des \texttt{\_} en début et fin de chaîne.
+\end{enumerate}
+
+% ============================================================
+\section{Classe \texttt{RosettaScraper}}
+
+\subsection{Constructeur \texttt{\_\_init\_\_}}
+
+\begin{lstlisting}
+def __init__(self, output_dir="data/sample", delay=0.5, strict_validation=True):
+    self.base_dir = Path(output_dir)
+    self.rosetta_dir = self.base_dir / "rosetta_code"
+    self.delay = delay
+    self.validator = CodeValidator(strict_mode=strict_validation)
+    self.session = requests.Session()
+    self.session.headers.update({"User-Agent": "RosettaCode-Dataset-Builder/1.0"})
+    self.lang_dirs = {"C": "C", "C++": "Cpp", "Rust": "Rust", "Go": "Go"}
+    self.stats = {
+        "tasks_processed": 0, "tasks_saved": 0,
+        "implementations": {"C": 0, "Cpp": 0, "Rust": 0, "Go": 0},
+        "rejections": {},
+    }
+\end{lstlisting}
+
+\begin{description}[leftmargin=3.5cm, style=nextline]
+    \item[\texttt{base\_dir}] Racine de sortie (\texttt{data/sample/} par défaut ; pour un run complet, \texttt{-o} pointe vers GCP ou un chemin temporaire).
+    \item[\texttt{rosetta\_dir}] Sous-dossier \texttt{<base\_dir>/rosetta\_code/}.
+    \item[\texttt{delay}] Pause en secondes entre chaque appel API.
+    \item[\texttt{validator}] Instance de \texttt{CodeValidator}.
+    \item[\texttt{session}] Session HTTP persistante (réutilise les connexions TCP). Le \texttt{User-Agent} identifie le script auprès du serveur.
+    \item[\texttt{lang\_dirs}] Mapping nom de langage → nom de dossier (\texttt{"C++"} → \texttt{"Cpp"}, \texttt{"Rust"} → \texttt{"Rust"}, \texttt{"Go"} → \texttt{"Go"}).
+    \item[\texttt{stats}] Compteurs pour le rapport final.
+\end{description}
+
+\subsection{Méthode \texttt{api\_request(params)}}
+
+Envoie une requête GET à \texttt{API\_URL} avec les paramètres donnés. Ajoute \texttt{format=json} automatiquement. Attend \texttt{self.delay} secondes avant chaque requête (pour ne pas surcharger le serveur). En cas d'erreur réseau, affiche un message et retourne un dictionnaire vide.
+
+C'est la \textbf{seule} fonction qui communique avec le serveur RosettaCode.
+
+\subsection{Méthode \texttt{is\_csharp\_code(code)}}
+
+Détecte si un bloc est du C\# mal classé dans une section C/C++. Utilise 6 patterns typiques du C\# (\texttt{using System}, \texttt{Console.Write}, \texttt{.ToArray(}, \texttt{foreach(}, \texttt{List<}, \texttt{Dictionary<}). Si \textbf{au moins 2} matchent, le bloc est considéré comme du C\#. Ce filtre n'est appliqué que pour les sections \textbf{C} et \textbf{C++} (pas Rust ni Go).
+
+\subsection{Méthode \texttt{\_has\_main\_function(code, lang)}}
+
+Détecte si un bloc de code contient une fonction \texttt{main()} selon le langage. Utilisée par \texttt{\_merge\_fragments()} pour distinguer les blocs bibliothèque des implémentations.
+
+\begin{lstlisting}
+def _has_main_function(self, code: str, lang: str) -> bool:
+    if lang in ("C", "C++"):
+        return bool(re.search(r'\b(int|void)\s+main\s*\(', code))
+    elif lang == "Go":
+        return bool(re.search(r'\bfunc\s+main\s*\(', code))
+    elif lang == "Rust":
+        return bool(re.search(r'\bfn\s+main\s*\(', code))
+    return False
+\end{lstlisting}
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+    \item[C/C++] Cherche \texttt{int main(} ou \texttt{void main(}.
+    \item[Go] Cherche \texttt{func main(}.
+    \item[Rust] Cherche \texttt{fn main(}.
+\end{description}
+
+\subsection{Méthode \texttt{\_merge\_fragments(blocks, lang)}}
+
+Sur RosettaCode, certaines sections contiennent un programme \textbf{découpé en plusieurs blocs} \texttt{<syntaxhighlight>}. Par exemple, un bloc de code bibliothèque (fonctions, variables globales) suivi de plusieurs \texttt{main()} différents qui l'utilisent. Sans fusion, chaque bloc est sauvé comme une implémentation indépendante, ce qui produit des fichiers \textbf{incomplets et incompilables}.
+
+\begin{lstlisting}
+def _merge_fragments(self, blocks: list[str], lang: str) -> list[str]:
+\end{lstlisting}
+
+\textbf{Logique de fusion :}
+
+\begin{enumerate}
+    \item \textbf{Si un seul bloc} : retourné tel quel (rien à fusionner).
+    \item \textbf{Séparation} : les blocs sont classés en :
+    \begin{itemize}
+        \item \texttt{library\_blocks} : blocs \textbf{sans} \texttt{main()} (code partagé, définitions).
+        \item \texttt{main\_blocks} : blocs \textbf{avec} \texttt{main()} (programmes).
+    \end{itemize}
+    \item \textbf{Pas de library blocks} → les main blocks sont des \textbf{implémentations indépendantes}, retournés tels quels.
+    \item \textbf{Library blocks présents} → on les concatène en un \texttt{prefix}, puis :
+    \begin{itemize}
+        \item On ne fusionne qu'avec le \textbf{premier} \texttt{main()} : \texttt{prefix + "\textbackslash n\textbackslash n" + main\_blocks[0]} → \textbf{une seule} implémentation complète.
+        \item Les autres \texttt{main()} sont ignorés : ce sont des variantes/démos du même algorithme, pas des implémentations distinctes.
+        \item Si aucun main block : tout est fusionné en un seul bloc.
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection*{Choix de conception : un seul programme quand la bibliothèque est partagée}
+
+\textbf{Pourquoi RosettaCode propose plusieurs \texttt{main()}.}
+
+RosettaCode est une chrestomathie : son but est de montrer « comment faire la même tâche » et souvent \textbf{plusieurs usages} dans la même langue. Une section C++ peut donc contenir un bloc bibliothèque (l'algorithme commun) puis plusieurs petits programmes qui l'utilisent : un \texttt{main()} pour l'affichage type, un autre pour un benchmark, un autre pour une variante. Les contributeurs ajoutent ainsi plusieurs \textbf{démos} du même algorithme — ce n'est pas redondant pour eux, c'est pédagogique.
+
+\textbf{Pourquoi nous n'en gardons qu'un.}
+
+Notre objectif est un benchmark pour la \textbf{détection de similarité de code binaire} (BCSD). On a besoin de paires de binaires \emph{sémantiquement similaires} (même tâche) mais \emph{syntaxiquement différents} (implémentations vraiment distinctes). Si on conservait \texttt{library+main\_A} et \texttt{library+main\_B} comme deux implémentations, leurs binaires partageraient la quasi-totalité du code ($>$90\,\%) ; on introduirait des paires artificiellement très proches qui ne sont pas des implémentations distinctes. Le sujet du projet demande explicitement des ``implémentations distinctes, langages différents'' pour un benchmark réaliste.
+
+\textbf{En résumé :} c'est un \textbf{choix assumé} du scraper : lorsqu'une section contient du code bibliothèque commun et plusieurs \texttt{main()}, on ne produit qu'\textbf{une seule} implémentation (library + premier \texttt{main()}). Les autres \texttt{main()} sont ignorés. On privilégie ainsi une définition stricte d'« implémentation » adaptée au BCSD, au détriment de la conservation de toutes les démos présentes sur la page.
+
+\textbf{Exemple concret} (\textit{9 billion names of god the integer}, C++) :
+\begin{itemize}
+    \item Bloc 1 (library) : fonctions \texttt{G}, \texttt{G\_hyp}, variables \texttt{N}, \texttt{hyp} — \textbf{pas de main}.
+    \item Blocs 2, 3, 4 : chacun un \texttt{main()} différent (affichage triangulaire, nombres de partitions, etc.).
+    \item Résultat : \textbf{1 seul fichier} = library + premier main. Les mains 2 et 3 sont des démos du même algorithme.
+\end{itemize}
+
+\subsubsection*{Gestion des solutions multi-fichiers}
+
+Sur RosettaCode, certaines solutions sont présentées comme si elles étaient réparties en plusieurs fichiers (un \texttt{.h} pour les définitions, un \texttt{.c} pour le programme principal, etc.). Cependant, sur la page wiki, il n'y a \textbf{pas de concept de fichier séparé} : il s'agit simplement de \textbf{plusieurs blocs} \texttt{<syntaxhighlight>} à la suite dans la même section.
+
+Notre fusion gère déjà ce cas : les blocs sans \texttt{main()} (contenu ``\texttt{.h}'', fonctions utilitaires) sont concaténés comme préfixe, puis fusionnés avec le bloc contenant le \texttt{main()}. Le résultat est \textbf{un seul fichier source} qui contient tout.
+
+\textbf{Pourquoi ça fonctionne :} en C/C++, il n'y a aucune obligation d'avoir des fichiers séparés. Un programme complet peut tenir dans un seul \texttt{.c} ou \texttt{.cpp} : définitions de structures, fonctions, \texttt{main()} --- tout dans le même fichier est parfaitement valide et compilable. Séparer en \texttt{.h} + \texttt{.c} est une convention de projet (modularité, réutilisabilité), pas une contrainte du langage. De même, Go et Rust sont naturellement orientés fichier unique pour les petits programmes.
+
+\textbf{Cas limites non gérés :}
+\begin{itemize}
+    \item Un bloc qui fait \texttt{\#include "mon\_header.h"} pour inclure un \textbf{autre bloc} de la page. Le contenu du header est déjà injecté dans le fichier par la fusion, mais la directive \texttt{\#include} cherchera un fichier qui n'existe pas → erreur de compilation.
+    \item Des solutions qui exigent une \textbf{compilation séparée} (\texttt{gcc file1.c file2.c -o prog}) --- cas très rare sur RosettaCode.
+\end{itemize}
+
+Ces cas marginaux seront naturellement \textbf{filtrés par l'étape de compilation} (étape 2 du projet) : si le code ne compile pas, il est exclu du benchmark. Il n'est pas nécessaire de complexifier le scraper pour les traiter.
+
+\subsection{Méthode \texttt{get\_all\_tasks(filter\_keyword)}}
+
+Récupère la liste de toutes les tâches de la catégorie \texttt{Programming\_Tasks} via l'API MediaWiki. Utilise le paramètre \texttt{cmcontinue} pour paginer les résultats (l'API retourne au maximum 500 résultats par requête). Si \texttt{filter\_keyword} est fourni, filtre la liste pour ne garder que les tâches dont le titre contient ce mot-clé (insensible à la casse).
+
+\subsection{Méthode \texttt{get\_task\_contenu(task\_name)}}
+
+Récupère le \textbf{wikitext} (texte brut de la page wiki) d'une tâche donnée, via l'API \texttt{action=query} avec \texttt{prop=revisions} et \texttt{rvprop=content}. Retourne le texte brut ou \py{None} si la page est absente ou vide.
+
+\subsection{Méthode \texttt{parse\_blocs\_code(wikitext)}}
+
+C'est le c\oe ur du parsing. Étapes :
+
+\begin{enumerate}
+    \item \textbf{Détection de TOUS les headers} : la regex \regex{==\textbackslash s*\textbackslash\{\textbackslash\{header\textbackslash|([^\}]+)\textbackslash\}\textbackslash\}} repère les titres de section par langage. \textbf{Important :} on collecte \textbf{tous} les headers (toutes langues confondues), pas seulement les langages cibles. Le pattern est volontairement souple (sans exiger \texttt{==} à la fin) pour détecter aussi les \textbf{headers combinés} comme \texttt{==\{\{header|Icon\}\} and \{\{header|Unicon\}\}==}.
+
+    \item \textbf{Filtrage des headers cibles} : on ne garde que les headers C, C++, Rust et Go pour l'extraction.
+
+    \item \textbf{Découpage en sections} : pour chaque header cible, la section s'étend jusqu'au \textbf{prochain header de n'importe quel langage} (pas seulement le prochain langage cible). Ceci évite d'attribuer le code de langages intermédiaires (ex: Haskell, Java, Python) au mauvais langage.
+
+    \item \textbf{Extraction des blocs} : dans chaque section, on cherche les balises :
+    \begin{itemize}
+        \item \regex{<syntaxhighlight[^\textgreater]*>(.*?)</syntaxhighlight>}
+        \item \regex{<lang[^\textgreater]*>(.*?)</lang>}
+    \end{itemize}
+    Le flag \texttt{re.DOTALL} fait que \texttt{.} matche aussi les retours à la ligne (le code est multi-lignes). Le \texttt{*?} est non gourmand pour capturer le bloc le plus court possible.
+
+    \item \textbf{Filtrage} : chaque bloc passe par \texttt{is\_csharp\_code()} puis \texttt{validator.validate()}. Les blocs rejetés incrémentent les compteurs de \texttt{stats["rejections"]}.
+
+    \item \textbf{Fusion intelligente des fragments} : après la collecte, chaque liste de blocs est passée à \texttt{\_merge\_fragments()} pour reconstituer des programmes complets (voir section dédiée ci-dessous).
+
+    \item \textbf{Résultat} : un dictionnaire \py{\{"C": [code1, ...], "C++": [...], "Rust": [...], "Go": [...]\}} (seuls les langages trouvés sont présents). Chaque élément est un programme \textbf{complet} (avec \texttt{main()}).
+\end{enumerate}
+
+\subsection{Méthode \texttt{save\_task(task\_name, codes)}}
+
+Sauvegarde les blocs acceptés sur le disque :
+\begin{enumerate}
+    \item Convertit le nom de tâche en snake\_case via \texttt{task\_name\_to\_snake\_case()}.
+    \item Crée l'arborescence \texttt{rosetta\_code/<task>/<C|Cpp|Rust|Go>/}.
+    \item Écrit chaque bloc dans un fichier nommé \texttt{impl\_01.c}, \texttt{impl\_02.c}, etc. (ou \texttt{.cpp}, \texttt{.rs}, \texttt{.go}).
+    \item Met à jour les compteurs de \texttt{stats["implementations"]}.
+\end{enumerate}
+
+\subsection{Méthode \texttt{scrape(limit, min\_languages, filter\_keyword, verbose)}}
+
+Fonction principale qui orchestre tout le processus :
+
+\begin{lstlisting}
+def scrape(self, limit=None, min_languages=1,
+           filter_keyword=None, verbose=False):
+\end{lstlisting}
+
+\begin{description}[leftmargin=4cm, style=nextline]
+    \item[\texttt{limit}] Nombre maximum de tâches à traiter (\py{None} = toutes).
+    \item[\texttt{min\_languages}] Nombre minimum de langages requis pour sauvegarder une tâche. \texttt{1} = au moins un langage suffit ; \texttt{2} = au moins deux langages parmi C, C++, Rust, Go.
+    \item[\texttt{filter\_keyword}] Filtre par mot-clé sur le nom de la tâche.
+    \item[\texttt{verbose}] Si \py{True}, affiche chaque tâche sauvegardée avec les langages détectés.
+\end{description}
+
+Le flux :
+\begin{enumerate}
+    \item Crée le répertoire de sortie si nécessaire.
+    \item Récupère la liste des tâches, tronquée à \texttt{limit} si fourni.
+    \item Boucle sur les tâches (avec barre de progression \texttt{tqdm}).
+    \item Pour chaque tâche : récupère le contenu → parse les blocs → filtre par \texttt{min\_languages} → sauvegarde.
+    \item Appelle \texttt{print\_stats()} et \texttt{save\_metadata()}.
+\end{enumerate}
+
+\subsection{Méthode \texttt{print\_stats()}}
+
+Affiche un résumé en console : nombre de tâches analysées/sauvegardées, nombre de fichiers par langage, et le top 5 des raisons de rejet (triées par fréquence décroissante).
+
+\subsection{Méthode \texttt{save\_metadata()}}
+
+Écrit un fichier JSON \texttt{<output\_dir>/rosetta\_metadata.json} contenant :
+\begin{itemize}
+    \item La source (\texttt{"rosetta\_code"}).
+    \item La date du scraping.
+    \item Le nombre total de tâches sauvegardées.
+    \item Le nombre d'implémentations par langage.
+    \item La description de la structure du dataset.
+\end{itemize}
+
+% ============================================================
+\section{Point d'entrée \texttt{main()}}
+
+La fonction \texttt{main()} utilise \texttt{argparse} pour définir les options en ligne de commande :
+
+\begin{longtable}{llp{7cm}}
+\toprule
+\textbf{Option} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{-o}, \texttt{-{}-output} & str & Dossier de sortie (défaut: \texttt{data/sample}) \\
+\texttt{-l}, \texttt{-{}-limit} & int & Nombre max de tâches \\
+\texttt{-m}, \texttt{-{}-min-languages} & int & Langages minimum (1=au moins un, 2=au moins deux, etc.) \\
+\texttt{-d}, \texttt{-{}-delay} & float & Délai entre requêtes en secondes \\
+\texttt{-f}, \texttt{-{}-filter} & str & Filtrer les tâches par mot-clé \\
+\texttt{-v}, \texttt{-{}-verbose} & flag & Affichage détaillé \\
+\texttt{-{}-no-strict} & flag & Désactiver la validation stricte \\
+\bottomrule
+\end{longtable}
+
+Exemple d'utilisation :
+\begin{lstlisting}[language=bash, style=python]
+python src/scrapers/rosetta_scraper.py -l 20 -v -m 2
+\end{lstlisting}
+
+Cette commande scrape les 20 premières tâches, en mode verbose, en exigeant au moins 2 langages parmi C, C++, Rust et Go.
+
+% ============================================================
+\section{Structure de sortie}
+
+\begin{lstlisting}[language={}, style=python]
+data/
+  sample/                        # sortie par defaut (echantillon, commite sur git)
+    rosetta_code/
+      binary_search/
+        C/
+          impl_01.c
+          impl_02.c
+        Cpp/
+          impl_01.cpp
+        Rust/
+          impl_01.rs
+        Go/
+          impl_01.go
+      bubble_sort/
+        C/
+          impl_01.c
+        Cpp/
+          impl_01.cpp
+        Rust/
+          impl_01.rs
+      ...
+    rosetta_metadata.json
+\end{lstlisting}
+
+Le dataset complet est envoye sur GCP (pipeline a venir), pas stocke localement.
+
+Chaque tâche a son dossier (en snake\_case). Chaque langage a un sous-dossier (\texttt{C}, \texttt{Cpp}, \texttt{Rust} ou \texttt{Go}). Les implémentations sont numérotées \texttt{impl\_01}, \texttt{impl\_02}, etc.
+
+% ============================================================
+\section{Limites connues}
+
+\begin{itemize}
+    \item La validation est \textbf{heuristique} (pas de compilation réelle) : il restera du bruit dans le dataset. Certains fichiers extraits peuvent contenir des erreurs de syntaxe provenant du code source original sur RosettaCode.
+    \item Certaines solutions RosettaCode dépendent de bibliothèques externes ou d'un environnement spécifique et ne sont pas compilables en l'état.
+    \item Si une page n'utilise pas les templates \texttt{\{\{header|C\}\}}, \texttt{\{\{header|C++\}\}}, \texttt{\{\{header|Rust\}\}} ou \texttt{\{\{header|Go\}\}}, le scraper ne trouvera pas la section.
+    \item Le filtre C\# (appliqué uniquement aux sections C/C++) est également heuristique et peut laisser passer (ou rejeter à tort) certains blocs.
+    \item La fusion intelligente repose sur la détection de \texttt{main()} : si un programme n'a pas de \texttt{main()} explicite (cas rare), il peut être classé comme fragment bibliothèque.
+    \item \textbf{Choix assumé} : lorsqu'une section contient une bibliothèque partagée et plusieurs \texttt{main()}, un seul programme (library + premier \texttt{main()}) est conservé ; les autres démos sont ignorées. Voir la sous-section \emph{Choix de conception} dans \texttt{\_merge\_fragments} pour le pourquoi du comment.
+    \item La détection de ``~20 autres langages'' dans \texttt{\_non\_c\_patterns} couvre les cas les plus fréquents mais pas l'exhaustivité des langages présents sur RosettaCode.
+\end{itemize}
+
+\end{document}
