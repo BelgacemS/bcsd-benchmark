@@ -1,11 +1,10 @@
-# Environnements Python
 .venv/
 venv/
 __pycache__/
+
 .DS_Store
+
 sujet-04.pdf
-rosetta_scraper_guide.pdf
 docs/rosetta_scraper_guide.tex
 
-# Sortie locale d'un run complet
 data/output/
