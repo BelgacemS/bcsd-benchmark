@@ -21,15 +21,6 @@ bcsd-benchmark/
 
 Le dataset complet est envoyé sur GCP (pipeline à venir), seul l'échantillon est commité sur git.
 
-### Composants
-
-| Composant | Dossier | Statut |
-|-----------|---------|--------|
-| Scraper RosettaCode | `src/scrapers/` | Fonctionnel |
-| Pipeline de compilation | `src/compilation/` | À venir |
-| Évaluation BCSD | `src/evaluation/` | À venir |
-| Scripts et utilitaires | `scripts/` | À venir |
-| Tests | `tests/` | À venir |
 
 ### Installation
 
