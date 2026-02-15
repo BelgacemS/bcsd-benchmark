@@ -1,0 +1,12 @@
+{
+  "source": "rosetta_code",
+  "scrape_date": "2026-02-15T18:44:50.922015",
+  "total_tasks": 20,
+  "implementations": {
+    "C": 29,
+    "Cpp": 30,
+    "Rust": 26,
+    "Go": 23
+  },
+  "structure": "dataset/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
+}
