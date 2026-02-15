@@ -6,20 +6,20 @@ L'objectif du projet est de construire un benchmark diversifié et réaliste pou
 
 ```
 bcsd-benchmark/
-├── src/                     Code source principal
-│   ├── scrapers/            Collecte de code (RosettaCode, etc.)
-│   ├── compilation/         Pipeline de compilation en binaires (à venir)
-│   └── evaluation/          Évaluation des modèles BCSD (à venir)
+├── src/
+│   ├── scrapers/
+│   ├── compilation/  
+│   └── evaluation/
 ├── data/
-│   └── sample/              Échantillon du dataset (commité sur git)
-├── scripts/                 Scripts de lancement et utilitaires
-├── tests/                   Tests unitaires et d'intégration
-├── docs/                    Documentation et guides
-├── requirements.txt         Dépendances Python
+│   └── sample/
+├── scripts/
+├── tests/
+├── docs/       
+├── requirements.txt
 └── README.md
 ```
 
-Le dataset complet est envoyé sur GCP (pipeline à venir), seul l'échantillon est commité sur git.
+Le dataset complet est envoyé sur GCP (pipeline à venir).
 
 
 ### Installation
