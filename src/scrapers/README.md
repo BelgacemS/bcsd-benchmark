@@ -40,7 +40,7 @@ API RosettaCode
   Détection de tous les headers de section (toutes langues)
       │
       ▼
-  Découpage en sections (frontière = prochain header de N'IMPORTE QUEL langage)
+  Découpage en sections (frontière = prochain header de n'importe quel langage)
       │
       ▼ 
   Extraction des blocs <syntaxhighlight> et <lang> (pour chaque section C/C++/Rust/Go)
