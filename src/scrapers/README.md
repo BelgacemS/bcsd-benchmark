@@ -17,7 +17,7 @@ python src/scrapers/rosetta_scraper.py -l 20 -v (exemple)
 ```
 
 Options :
-- `-o <dir>` : dossier de sortie (défaut: `data/sample` ; pour un run complet vers GCP, passer un chemin bucket ou temporaire)
+- `-o <dir>` : dossier de sortie (défaut: `data/sample` ; pour un run complet vers GCP,on doit passer un chemin bucket ou temporaire)
 - `-l N` : N max de tâches
 - `-v` : mode verbose (affichage détaillé pendant l'exécution du scraper)
 - `-m N` : impose qu'une tâche possède au moins N langages différents parmi C, C++, Rust, Go (important pour la détection de similarité binaire)
@@ -37,41 +37,41 @@ API RosettaCode
   Récupération du wikitext (pour chaque tâche)
       │
       ▼
-  Détection de TOUS les headers de section (toutes langues)
+  Détection de tous les headers de section (toutes langues)
       │
       ▼
   Découpage en sections (frontière = prochain header de N'IMPORTE QUEL langage)
       │
-      ▼ pour chaque section C/C++/Rust/Go
-  Extraction des blocs <syntaxhighlight> et <lang>
+      ▼ 
+  Extraction des blocs <syntaxhighlight> et <lang> (pour chaque section C/C++/Rust/Go)
       │
       ▼
-  Filtrage C# (sections C/C++ uniquement)
+  Filtrage C# (pour sections C/C++ uniquement)
       │
       ▼
   Validation heuristique (CodeValidator)
       │
       ▼
-  Fusion intelligente des fragments (_merge_fragments)
+  Fusion des fragments (_merge_fragments)
       │
       ▼
-  Sauvegarde sur disque
+  Sauvegarde
 ```
 
 ### Système de validation (CodeValidator)
 
 Le `CodeValidator` applique une série de vérifications heuristiques pour rejeter les blocs invalides :
 
-1. **Bloc vide** → rejeté
-2. **Wikitext** → détection de `{{header|`, `{{lang|`, `[[Category:`, `<ref>` → rejeté
-3. **Trop court** → seuils min de caractères (80) et lignes (5) en mode strict
-4. **Autre langage** → détection de patterns typiques de **~20 langages** :
+1. **Bloc vide** -> rejeté
+2. **Wikitext** -> détection de `{{header|`, `{{lang|`, `[[Category:`, `<ref>` -> rejeté
+3. **Trop court** -> seuils min de caractères (80) et lignes (5) en mode strict
+4. **Autre langage** -> détection de patterns typiques de **~20 langages** :
    - Python, JavaScript, Java, Factor, Fortran, COBOL, Lisp/Scheme/Clojure, Pascal/Delphi, D, Haskell, Erlang, BASIC, OCaml/F#, Nim, Ring, REXX, Perl, Ruby, Icon/Unicon
    - Rejeté si >= 2 patterns d'un autre langage matchent
-5. **Pas du code** → vérifie la présence de `{}` (Go/Rust) ou `[;{}]` (C/C++) et d'appels de fonctions
+5. **Pas du code** -> vérifie la présence de `{}` (Go/Rust) ou `[;{}]` (C/C++) et d'appels de fonctions
 6. **Marqueurs insuffisants** (mode strict) -> vérifie >= 2 marqueurs du langage cible (ex: `#include`, `printf`, `struct` pour C)
 
-### Fusion intelligente des fragments
+### Fusion des fragments
 
 Sur RosettaCode, certaines sections contiennent un programme **découpé en plusieurs blocs** `<syntaxhighlight>` (code bibliothèque + différents `main()`). Le scraper détecte et fusionne ces fragments :
 
@@ -79,11 +79,10 @@ Sur RosettaCode, certaines sections contiennent un programme **découpé en plus
 - **Blocs avec `main()`** = programmes de démonstration
 
 Règles :
-- **Pas de blocs bibliothèqes** → chaque bloc main = implémentation indépendante (gardées toutes)
-- **Blocs bibliothèques présents** → fusionnés avec **le premier `main()` uniquement**
-  - Les autres `main()` sont des variantes/démos du même algorithme, pas des implémentations distinctes
-  - Justification BCSD : `bibliothèque+main_A` et `bibliothèque+main_B` produiraient des binaires quasi identiques, ce qui biaiserait les métriques de similarité
-- **Aucun bloc main** → tout fusionné en un seul fichier
+- **Pas de blocs bibliothèqes** -> chaque bloc main = implémentation indépendante (gardées toutes)
+- **Blocs bibliothèques présents** -> fusionnés avec **le premier `main()` uniquement**
+  - Les autres `main()` sont des variantes/démos du même algorithme, pas des implémentations distinctes `bibliothèque+main_A` et `bibliothèque+main_B` produiraient des binaires quasi identiques, ce qui biaiserait les métriques de similarité
+- **Aucun bloc main** -> tout fusionné en un seul fichier
 
 ### Gestion des headers combinés
 
@@ -91,7 +90,7 @@ Le scraper gère les headers RosettaCode combinés comme :
 ```
 =={{header|Icon}} and {{header|Unicon}}==
 ```
-Ces headers sont correctement détectés pour délimiter les sections, même s'ils contiennent plusieurs langages dans un même titre.
+Ces headers sont détectés pour délimiter les sections, même s'ils contiennent plusieurs langages dans un même titre.
 
 ### Ajouter un nouveau scraper
 
@@ -101,13 +100,13 @@ Chaque scraper doit :
 3. Générer un fichier de métadonnées `<output_dir>/<source>_metadata.json`
 4. Valider les blocs via `CodeValidator` (ou équivalent)
 
-Par défaut la sortie est `data/sample/`. Pour un run complet, utiliser `-o` vers un chemin GCP ou temporaire (le dataset complet est envoyé sur GCP, pas stocké localement).
+Par défaut la sortie est `data/sample/`. Pour un run complet, on doit utiliser `-o` vers un chemin GCP ou temporaire (le dataset complet est envoyé sur GCP, pas stocké localement)
 
 ### Structure de sortie commune
 
 ```
 data/
-└── sample/                  (échantillon, commité sur git)
+└── sample/                 
     └── rosetta_code/
         ├── <task>/
         │   ├── C/
