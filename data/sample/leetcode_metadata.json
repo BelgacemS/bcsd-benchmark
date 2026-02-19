@@ -1,0 +1,12 @@
+{
+  "source": "leetcode",
+  "scrape_date": "2026-02-19T01:54:38.744996",
+  "total_tasks": 20,
+  "implementations": {
+    "C": 9,
+    "Cpp": 19,
+    "Rust": 0,
+    "Go": 16
+  },
+  "structure": "<output_dir>/leetcode/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
+}
