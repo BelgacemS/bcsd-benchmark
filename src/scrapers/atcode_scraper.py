@@ -231,7 +231,7 @@ def scrape_contest(contest, all_stats):
                 if success:
                     downloaded += 1
 
-                time.sleep(2)  # Délai de politesse
+                time.sleep(2)  # Délai 
 
             all_stats[task_key][lang_folder] = downloaded
             print(f"    [{lang}] {downloaded}/{NUM_IMPLEMENTATIONS}")
