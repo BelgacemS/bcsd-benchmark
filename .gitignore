@@ -6,5 +6,5 @@ __pycache__/
 
 sujet-04.pdf
 docs/rosetta_scraper_guide.tex
-
-data/output/
+data/output
+sujet-04 .pdf
