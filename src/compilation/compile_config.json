@@ -1,0 +1,97 @@
+{
+    "source_dir": "data/sample",
+    "output_dir": "data/binaries",
+    "compilers": {
+        "C": [
+            {
+                "name": "gcc",
+                "path": "gcc",
+                "opt_levels": [
+                    "-O0",
+                    "-O1",
+                    "-O2",
+                    "-O3",
+                    "-Os"
+                ],
+                "flags": [
+                    "-lm"
+                ]
+            },
+            {
+                "name": "clang",
+                "path": "clang",
+                "opt_levels": [
+                    "-O0",
+                    "-O1",
+                    "-O2",
+                    "-O3",
+                    "-Os"
+                ],
+                "flags": [
+                    "-lm"
+                ]
+            }
+        ],
+        "Cpp": [
+            {
+                "name": "g++",
+                "path": "g++",
+                "opt_levels": [
+                    "-O0",
+                    "-O1",
+                    "-O2",
+                    "-O3",
+                    "-Os"
+                ],
+                "flags": [
+                    "-std=c++17",
+                    "-lm"
+                ]
+            },
+            {
+                "name": "clang++",
+                "path": "clang++",
+                "opt_levels": [
+                    "-O0",
+                    "-O1",
+                    "-O2",
+                    "-O3",
+                    "-Os"
+                ],
+                "flags": [
+                    "-std=c++17",
+                    "-lm"
+                ]
+            }
+        ],
+        "Go": [
+            {
+                "name": "go",
+                "path": "~/go/bin/go",
+                "opt_levels": [
+                    "default",
+                    "noinline"
+                ],
+                "flags": []
+            }
+        ],
+        "Rust": [
+            {
+                "name": "rustc",
+                "path": "~/.cargo/bin/rustc",
+                "opt_levels": [
+                    "0",
+                    "1",
+                    "2",
+                    "3",
+                    "s",
+                    "z"
+                ],
+                "flags": []
+            }
+        ]
+    },
+    "timeout": 30,
+    "workers": 6,
+    "strip_binaries": false
+}
