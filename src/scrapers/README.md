@@ -7,6 +7,7 @@ Ce dossier contient les scripts de collecte de code source depuis différentes p
 | Script | Source | Langages | Statut |
 |---|---|---|---|
 | `rosetta_scraper.py` | RosettaCode | C, C++, Rust, Go | Fonctionnel |
+| `atcode_scraper.py` | AtCoder (ABC) | C, C++, Rust, Go | Fonctionnel |
 
 ### Utilisation
 
@@ -119,3 +120,71 @@ data/
         │       └── impl_01.go
         └── ...
 ```
+
+---
+
+### AtCoder (ABC)
+
+```bash
+python src/scrapers/atcode_scraper.py
+```
+
+Configuration via `.env` :
+- `CONTEST_START` : numéro du premier contest ABC (défaut : `100`)
+- `CONTEST_END` : numéro du dernier contest ABC (défaut : `445`)
+- `REVEL_SESSION` : cookie de session AtCoder (obligatoire, obtenu après connexion)
+- `TARGET_LANGS` : langages cibles séparés par des virgules (défaut : `C++,C,Rust,Go`)
+- `PROBLEMS` : lettres des problèmes (défaut : `a,b,c,d`)
+- `OUTPUT_DIR` : dossier de sortie (défaut : `data/atcoder`)
+- `NUM_IMPLEMENTATIONS` : nombre d'implémentations par langage (défaut : `3`)
+
+### Pipeline du scraper AtCoder
+
+```
+Boucle sur les contests ABC (100 → 445)
+      │
+      ▼
+  Pour chaque problème (a, b, c, d)
+      │
+      ▼
+  Récupération du nom du problème (page de la tâche AtCoder)
+      │
+      ▼
+  Pour chaque langage cible (C, C++, Rust, Go)
+      │
+      ▼
+  Recherche de soumissions AC (f.Status=AC, f.LanguageName=...)
+      │
+      ▼
+  Filtrage par utilisateurs distincts (max 3 par langage)
+      │
+      ▼
+  Pagination (jusqu'à 10 pages si nécessaire)
+      │
+      ▼
+  Téléchargement du code source (<pre id="submission-code">)
+      │
+      ▼
+  Sauvegarde dans <output_dir>/<problem_name>/<Lang>/impl_XX.ext
+      │
+      ▼
+  Génération du fichier de métadonnées atcoder_metadata.json
+```
+
+### Filtrage des langages
+
+Le scraper utilise deux niveaux de filtrage pour garantir la bonne correspondance des langages :
+
+1. **Filtre URL** (`f.LanguageName`) : paramètre de requête AtCoder pour pré-filtrer côté serveur
+2. **Vérification locale** (`lang_matches`) : validation stricte du texte de la colonne langage
+   - **C** : doit commencer par `C ` ou `C(` pour éviter C++, C#, Cython, etc.
+   - **C++** : vérifie la présence de `C++` dans le texte
+   - **Rust** / **Go** : vérifie que le texte commence par le nom du langage
+
+### Diversité des implémentations
+
+Pour chaque langage et problème, le scraper collecte jusqu'à 3 soumissions provenant d'**utilisateurs différents** (`seen_users`), ce qui garantit des implémentations diversifiées plutôt que des doublons du même auteur.
+
+### Authentification
+
+Le scraper nécessite un cookie `REVEL_SESSION` valide pour accéder aux soumissions AtCoder. Ce cookie est obtenu en se connectant manuellement sur le site et en copiant la valeur depuis les outils développeur du navigateur.
