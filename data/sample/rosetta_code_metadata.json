@@ -1,6 +1,6 @@
 {
   "source": "rosetta_code",
-  "scrape_date": "2026-02-15T18:44:50.922015",
+  "scrape_date": "2026-02-19T01:54:38.743040",
   "total_tasks": 20,
   "implementations": {
     "C": 29,
@@ -8,5 +8,5 @@
     "Rust": 26,
     "Go": 23
   },
-  "structure": "dataset/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
+  "structure": "<output_dir>/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
 }

@@ -1,0 +1,12 @@
+{
+  "source": "the_algorithms",
+  "scrape_date": "2026-02-19T01:54:38.746739",
+  "total_tasks": 20,
+  "implementations": {
+    "C": 17,
+    "Cpp": 15,
+    "Rust": 15,
+    "Go": 3
+  },
+  "structure": "<output_dir>/the_algorithms/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
+}
