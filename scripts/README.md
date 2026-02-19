@@ -4,15 +4,12 @@ Ce dossier contient tous les scripts annexes du projet.
 
 ### Objectif
 
-- **Lancement du pipeline** : scripts qui lancent les étapes (scraping, compilation, évaluation)
-- **Utilitaires** : statistiques, upload GCP, génération de paires, nettoyage
+- **Lancement du pipeline** : scripts qui lancent les grandes étapes (scraping, compilation, évaluation)
+- **Utilitaires** : statistiques, interactions avec GCP (upload/download), génération de paires, nettoyage
 
-### Convention
-
-- Nommage : `run_<étape>.sh` pour les lancements, `<action>_<cible>.py` pour les utilitaires
-- Exemples :
-  - `run_compilation.sh` — lancer la compilation multi-config
-  - `run_eval_trex.sh` — lancer l'évaluation Trex
-  - `stats_dataset.py` — statistiques sur le dataset
-  - `upload_gcp.sh` — upload du dataset vers GCP
-  - `generate_pairs.py` — génération des paires similaires / non similaires
+  - `run_compilation.sh` — lancer la compilation multi-config (à faire)
+  - `run_eval_trex.sh` — lancer l'évaluation Trex (à faire)
+  - `download_sample.sh` — télécharger un échantillon du dataset depuis GCP
+  - `upload_gcp.sh` — uploader le dataset complet vers GCP
+  - `stats_dataset.py` — générer des statistiques sur le dataset ( à faire)
+  - `generate_pairs.py` — générer des paires (similaires / non similaires) ( à faire)
