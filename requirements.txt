@@ -1,2 +1,7 @@
 requests>=2.28.0
 tqdm>=4.60.0
+pytest>=7.0.0
+beautifulsoup4>=4.11.0 
+pandas>=2.0.0
+numpy>=1.22.0
+google-cloud-storage>=2.10.0 # pour upload/download sur GCP
