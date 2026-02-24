@@ -1,7 +1,7 @@
 .venv/
 venv/
 __pycache__/
-
+.env
 .DS_Store
 
 sujet-04.pdf

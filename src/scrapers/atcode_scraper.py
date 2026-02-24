@@ -2,11 +2,13 @@
 
 import requests
 import time
+import random
 import os
 import json
 import urllib.parse
 from datetime import datetime
 from bs4 import BeautifulSoup
+from markdownify import markdownify as md
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,36 +42,50 @@ session.headers.update({
 })
 
 
-def get_problem_name(contest, problem_char):
-    """Récupère le titre du problème depuis la page de la tâche pour l'utiliser comme nom de dossier."""
+def smart_delay(low=0.3, high=1.0):
+    """Délai aléatoire entre les requêtes — plus discret qu'un intervalle fixe."""
+    time.sleep(random.uniform(low, high))
+
+
+def get_task_info(contest, problem_char):
+    """
+    Récupère le nom ET la description du problème en une seule requête.
+    Retourne (problem_name, task_description).
+    """
     problem_id = f"{contest}_{problem_char}"
     url = f"{BASE_URL}/contests/{contest}/tasks/{problem_id}"
+    name = f"{contest}_{problem_char}"  # nom par défaut
+    description = ""
     try:
         resp = session.get(url)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
+
+        # --- Nom du problème ---
         title_tag = soup.find("span", class_="h2")
         if title_tag:
-            # Récupérer uniquement le texte direct, pas celui des éléments enfants
             full_title = title_tag.find(string=True, recursive=False)
             if full_title:
                 full_title = full_title.strip()
             else:
                 full_title = title_tag.get_text().split("\n")[0].strip()
-            # Supprimer le préfixe "A - "
             if " - " in full_title:
                 name = full_title.split(" - ", 1)[1]
             else:
                 name = full_title
-            # Assainir le nom pour l'utiliser comme dossier
             name = name.replace(" ", "_").replace("!", "").replace("?", "")
             name = name.replace("'", "").replace('"', "").replace("/", "_")
             name = name.replace("*", "").replace(":", "").replace(",", "")
-            return name
+
+        # --- Description du problème (en markdown) ---
+        task_statement = soup.find("div", id="task-statement")
+        if task_statement:
+            description = md(str(task_statement), heading_style="ATX", strip=["img"]).strip()
+
     except Exception as e:
-        print(f"  Erreur lors de la récupération du nom du problème : {e}")
-    # Nom par défaut en cas d'échec
-    return f"{contest}_{problem_char}"
+        print(f"  Erreur lors de la récupération de la tâche : {e}")
+
+    return name, description
 
 
 def lang_matches(language_name, lang_text):
@@ -162,7 +178,7 @@ def get_submission_urls(contest, problem_char, language_name, count=3):
                 break
 
             page += 1
-            time.sleep(1)  # Délai de politesse entre les pages
+            smart_delay(0.3, 0.8)
 
         except Exception as e:
             print(f"  Erreur lors de la recherche page {page} : {e}")
@@ -199,8 +215,8 @@ def scrape_contest(contest, all_stats):
     for prob in PROBLEMS:
         print(f"  Problème {prob.upper()}...")
 
-        # Récupérer le nom du problème pour le dossier
-        problem_name = get_problem_name(contest, prob)
+        # Récupérer le nom et la description en une seule requête
+        problem_name, task_description = get_task_info(contest, prob)
         if not problem_name:
             print(f"    Impossible de récupérer le nom du problème, ignoré.")
             continue
@@ -209,6 +225,13 @@ def scrape_contest(contest, all_stats):
 
         task_key = f"{contest}/{problem_name}"
         all_stats[task_key] = {}
+
+        # Sauvegarder la description en markdown
+        os.makedirs(problem_dir, exist_ok=True)
+        desc_path = os.path.join(problem_dir, "task_description.md")
+        with open(desc_path, "w", encoding="utf-8") as f:
+            f.write(task_description)
+        smart_delay()
 
         for lang in TARGET_LANGS:
             lang_info = LANG_MAP.get(lang, {"folder": lang, "ext": ".txt"})
@@ -231,7 +254,7 @@ def scrape_contest(contest, all_stats):
                 if success:
                     downloaded += 1
 
-                time.sleep(2)  # Délai 
+                smart_delay(0.5, 1.2)
 
             all_stats[task_key][lang_folder] = downloaded
             print(f"    [{lang}] {downloaded}/{NUM_IMPLEMENTATIONS}")
