@@ -1,5 +1,3 @@
-package main
-
 func longestCommonPrefix(strs []string) string {
 	n := len(strs)
 	for i := range strs[0] {
@@ -11,5 +9,3 @@ func longestCommonPrefix(strs []string) string {
 	}
 	return strs[0]
 }
-
-func main() {}

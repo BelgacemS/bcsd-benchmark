@@ -1,12 +1,12 @@
 {
   "source": "rosetta_code",
-  "scrape_date": "2026-02-19T01:54:38.743040",
-  "total_tasks": 20,
+  "scrape_date": "2026-03-04T21:09:57.895252",
+  "total_tasks": 1319,
   "implementations": {
-    "C": 29,
-    "Cpp": 30,
-    "Rust": 26,
-    "Go": 23
+    "C": 1275,
+    "Cpp": 1344,
+    "Rust": 1062,
+    "Go": 1491
   },
   "structure": "<output_dir>/rosetta_code/<task>/<C|Cpp|Rust|Go>/impl_XX.<ext>"
 }

@@ -1,5 +1,3 @@
-package main
-
 func twoSum(nums []int, target int) []int {
 	d := map[int]int{}
 	for i := 0; ; i++ {
@@ -11,6 +9,3 @@ func twoSum(nums []int, target int) []int {
 		d[x] = i
 	}
 }
-
-
-func main() {}
