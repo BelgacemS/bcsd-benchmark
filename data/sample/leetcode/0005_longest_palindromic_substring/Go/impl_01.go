@@ -1,5 +1,3 @@
-package main
-
 func longestPalindrome(s string) string {
 	n := len(s)
 	f := make([][]bool, n)
@@ -24,5 +22,3 @@ func longestPalindrome(s string) string {
 	}
 	return s[k : k+mx]
 }
-
-func main() {}
