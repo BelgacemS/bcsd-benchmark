@@ -7,20 +7,17 @@ L'objectif du projet est de construire un benchmark diversifié et réaliste pou
 ```
 bcsd-benchmark/
 ├── src/
-│   ├── scrapers/
-│   ├── compilation/  
-│   └── evaluation/
+│   ├── scrapers/          # collecte de code source
+│   ├── compilation/       # pipeline de compilation
+│   └── evaluation/        # evaluation BCSD
 ├── data/
-│   └── sample/
-├── scripts/
+│   └── sample/            # echantillon local du dataset
+├── scripts/               # utilitaires (download, upload GCP, metadata)
 ├── tests/
-├── docs/       
+├── docs/
 ├── requirements.txt
 └── README.md
 ```
-
-Le dataset complet est envoyé sur GCP (pipeline à venir).
-
 
 ### Installation
 
@@ -31,15 +28,25 @@ pip install -r requirements.txt
 ### Utilisation rapide
 
 ```bash
-# Scraper RosettaCode (20 tâches, mode verbose, sortie dans data/sample/)
-python src/scrapers/rosetta_scraper.py -l 20 -v
+# Scrapers
+python src/scrapers/rosetta_scraper.py
+python src/scrapers/leetcode_scraper.py
+python src/scrapers/atcoder_scraper.py
+
+# Telecharger un sample depuis GCP
+./scripts/download_sample.sh leetcode 20
+./scripts/download_sample.sh all 20
+
+# Scraper + upload GCP
+bash scripts/scrape_and_upload.sh
 ```
 
-Voir `src/scrapers/README.md` pour la documentation complète du scraper.
+Voir `src/scrapers/README.md` pour la documentation complete des scrapers.
 
-### Langages supportés
+### Langages cibles
 
-- C
-- C++
-- Rust
-- Go
+C, C++, Rust, Go
+
+### Donnees
+
+Le dataset complet est stocke sur GCP (`gs://bscd-database/sources/`). En local on travaille avec un sample telecharge via `scripts/download_sample.sh`.
