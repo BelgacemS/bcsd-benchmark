@@ -1,10 +1,16 @@
 .venv/
 venv/
 __pycache__/
+*.pyc
 
 .DS_Store
+.env
+
+.pytest_cache/
+
+data/compiled/
+data/binaries/
+*.o
+*.bin
 
 sujet-04.pdf
-docs/rosetta_scraper_guide.tex
-data/output
-sujet-04 .pdf
