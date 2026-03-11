@@ -1,190 +1,111 @@
 ## Scrapers
 
-Ce dossier contient les scripts de collecte de code source depuis différentes plateformes.
+Ce dossier contient les scripts de collecte de code source depuis differentes plateformes
 
 ### Scrapers disponibles
 
-| Script | Source | Langages | Statut |
-|---|---|---|---|
-| `rosetta_scraper.py` | RosettaCode | C, C++, Rust, Go | Fonctionnel |
-| `atcode_scraper.py` | AtCoder (ABC) | C, C++, Rust, Go | Fonctionnel |
+- **`rosetta_scraper.py`** — RosettaCode (C, C++, Rust, Go)
+- **`leetcode_scraper.py`** — LeetCode via le repo GitHub doocs/leetcode (C, C++, Rust, Go)
+- **`atcoder_scraper.py`** — AtCoder, contests ABC (C, C++, Rust, Go)
+
+### Structure de sortie
+
+Tous les scrapers produisent la meme structure :
+
+```
+<output_dir>/
+    <source>/
+        <task>/
+            C/
+                impl_01.c
+            Cpp/
+                impl_01.cpp
+            Rust/
+                impl_01.rs
+            Go/
+                impl_01.go
+    <source>_metadata.json
+```
+
+Par defaut la sortie est `data/sample/`. Pour un run complet, utiliser `-o` vers un chemin temporaire puis uploader sur GCP via `scripts/scrape_and_upload.sh`
+
+---
 
 ### Utilisation
 
 #### RosettaCode
 
 ```bash
-python src/scrapers/rosetta_scraper.py -l 20 -v (exemple)
+python src/scrapers/rosetta_scraper.py -l 20 -v
 ```
 
 Options :
-- `-o <dir>` : dossier de sortie (défaut: `data/sample` ; pour un run complet vers GCP,on doit passer un chemin bucket ou temporaire)
-- `-l N` : N max de tâches
-- `-v` : mode verbose (affichage détaillé pendant l'exécution du scraper)
-- `-m N` : impose qu'une tâche possède au moins N langages différents parmi C, C++, Rust, Go (important pour la détection de similarité binaire)
-- `-f <mot>` : filtrer par mot-clé
-- `-d <sec>` : délai entre requêtes en cas de rate limit
-- `--no-strict` : désactive la validation stricte par CodeValidator
+- `-o <dir>` : dossier de sortie (defaut: `data/sample`)
+- `-l N` : N max de taches
+- `-v` : mode verbose
+- `-m N` : impose qu'une tache possede au moins N langages
+- `-f <mot>` : filtrer par mot-cle
+- `-d <sec>` : delai entre requetes
 
-### Pipeline du scraper
+Le scraper recupere les taches via l'API MediaWiki, extrait le code depuis les balises `<syntaxhighlight>` et `<lang>`, puis valide chaque bloc avec le `CodeValidator` (detection de wikitext, filtrage des autres langages, verification de la forme du code).
 
-```
-API RosettaCode
-      │
-      ▼
-  Liste des tâches (Category:Programming_Tasks)
-      │
-      ▼ 
-  Récupération du wikitext (pour chaque tâche)
-      │
-      ▼
-  Détection de tous les headers de section (toutes langues)
-      │
-      ▼
-  Découpage en sections (frontière = prochain header de n'importe quel langage)
-      │
-      ▼ 
-  Extraction des blocs <syntaxhighlight> et <lang> (pour chaque section C/C++/Rust/Go)
-      │
-      ▼
-  Filtrage C# (pour sections C/C++ uniquement)
-      │
-      ▼
-  Validation heuristique (CodeValidator)
-      │
-      ▼
-  Fusion des fragments (_merge_fragments)
-      │
-      ▼
-  Sauvegarde
+Quand une tache a plusieurs blocs de code pour un meme langage, le scraper essaie de les fusionner intelligemment (blocs bibliotheque + bloc main)
+
+#### LeetCode (doocs/leetcode GitHub)
+
+```bash
+python src/scrapers/leetcode_scraper.py -l 50 -m 2 -v
 ```
 
-### Système de validation (CodeValidator)
+Options :
+- `-o <dir>` : dossier de sortie (defaut: `data/sample`)
+- `-l N` : N max de problemes
+- `-m N` : langages minimum par probleme
+- `-d <sec>` : delai entre telechargements (defaut: 0.05s)
+- `-v` : mode verbose
 
-Le `CodeValidator` applique une série de vérifications heuristiques pour rejeter les blocs invalides :
+Le scraper utilise l'API Git Trees de GitHub pour recuperer l'arborescence complete du repo `doocs/leetcode` en une seule requete, puis telecharge les fichiers `Solution.{c,cpp,go,rs}` via `raw.githubusercontent.com`. Pas besoin d'authentification.
 
-1. **Bloc vide** -> rejeté
-2. **Wikitext** -> détection de `{{header|`, `{{lang|`, `[[Category:`, `<ref>` -> rejeté
-3. **Trop court** -> seuils min de caractères (80) et lignes (5) en mode strict
-4. **Autre langage** -> détection de patterns typiques de **~20 langages** :
-   - Python, JavaScript, Java, Factor, Fortran, COBOL, Lisp/Scheme/Clojure, Pascal/Delphi, D, Haskell, Erlang, BASIC, OCaml/F#, Nim, Ring, REXX, Perl, Ruby, Icon/Unicon
-   - Rejeté si >= 2 patterns d'un autre langage matchent
-5. **Pas du code** -> vérifie la présence de `{}` (Go/Rust) ou `[;{}]` (C/C++) et d'appels de fonctions
-6. **Marqueurs insuffisants** (mode strict) -> vérifie >= 2 marqueurs du langage cible (ex: `#include`, `printf`, `struct` pour C)
+#### AtCoder (ABC)
 
-### Fusion des fragments
-
-Sur RosettaCode, certaines sections contiennent un programme **découpé en plusieurs blocs** `<syntaxhighlight>` (code bibliothèque + différents `main()`). Le scraper détecte et fusionne ces fragments :
-
-- **Blocs sans `main()`** = code bibliothèque (headers, fonctions partagées)
-- **Blocs avec `main()`** = programmes de démonstration
-
-Règles :
-- **Pas de blocs bibliothèqes** -> chaque bloc main = implémentation indépendante (gardées toutes)
-- **Blocs bibliothèques présents** -> fusionnés avec **le premier `main()` uniquement**
-  - Les autres `main()` sont des variantes/démos du même algorithme, pas des implémentations distinctes `bibliothèque+main_A` et `bibliothèque+main_B` produiraient des binaires quasi identiques, ce qui biaiserait les métriques de similarité
-- **Aucun bloc main** -> tout fusionné en un seul fichier
-
-### Gestion des headers combinés
-
-Le scraper gère les headers RosettaCode combinés comme :
+```bash
+python src/scrapers/atcoder_scraper.py -o data/sample
 ```
-=={{header|Icon}} and {{header|Unicon}}==
-```
-Ces headers sont détectés pour délimiter les sections, même s'ils contiennent plusieurs langages dans un même titre.
 
-### Ajouter un nouveau scraper
+Options :
+- `-o <dir>` : dossier de sortie (defaut: `data/sample` ou `$OUTPUT_DIR`)
+- `--contest-start N` : numero du premier contest ABC (defaut: 100)
+- `--contest-end N` : numero du dernier contest ABC (defaut: 445)
+- `--problems a,b,c,d` : lettres des problemes
+- `--langs C++,C,Rust,Go` : langages cibles
+- `--num-impl N` : nombre d'implementations par langage (defaut: 3)
 
-Chaque scraper doit :
-1. Extraire du code source depuis une plateforme (ex: GitHub, LeetCode, …)
-2. Sauvegarder dans `<output_dir>/<source>/<task>/<Langage>/impl_XX.ext`
-3. Générer un fichier de métadonnées `<output_dir>/<source>_metadata.json`
-4. Valider les blocs via `CodeValidator` (ou équivalent)
+Configuration `.env` (pour le cookie) :
+- `REVEL_SESSION` : cookie de session AtCoder (obligatoire)
 
-Par défaut la sortie est `data/sample/`. Pour un run complet, on doit utiliser `-o` vers un chemin GCP ou temporaire (le dataset complet est envoyé sur GCP, pas stocké localement)
-
-### Structure de sortie commune
-
-```
-data/
-└── sample/                 
-    └── rosetta_code/
-        ├── <task>/
-        │   ├── C/
-        │   │   └── impl_01.c
-        │   ├── Cpp/
-        │   │   └── impl_01.cpp
-        │   ├── Rust/
-        │   │   └── impl_01.rs
-        │   └── Go/
-        │       └── impl_01.go
-        └── ...
-```
+Les autres parametres (CONTEST_START, etc.) peuvent etre passes en `.env` ou en arguments CLI. Les arguments CLI ont la priorite.
 
 ---
 
-### AtCoder (ABC)
+### Upload vers GCP
+
+Le script `scripts/scrape_and_upload.sh` lance les 3 scrapers et upload sur GCP :
 
 ```bash
-python src/scrapers/atcode_scraper.py
+bash scripts/scrape_and_upload.sh
 ```
 
-Configuration via `.env` :
-- `CONTEST_START` : numéro du premier contest ABC (défaut : `100`)
-- `CONTEST_END` : numéro du dernier contest ABC (défaut : `445`)
-- `REVEL_SESSION` : cookie de session AtCoder (obligatoire, obtenu après connexion)
-- `TARGET_LANGS` : langages cibles séparés par des virgules (défaut : `C++,C,Rust,Go`)
-- `PROBLEMS` : lettres des problèmes (défaut : `a,b,c,d`)
-- `OUTPUT_DIR` : dossier de sortie (défaut : `data/atcoder`)
-- `NUM_IMPLEMENTATIONS` : nombre d'implémentations par langage (défaut : `3`)
+Le bucket cible est `gs://bscd-database/sources/`.
 
-### Pipeline du scraper AtCoder
+---
 
-```
-Boucle sur les contests ABC (100 → 445)
-      │
-      ▼
-  Pour chaque problème (a, b, c, d)
-      │
-      ▼
-  Récupération du nom du problème (page de la tâche AtCoder)
-      │
-      ▼
-  Pour chaque langage cible (C, C++, Rust, Go)
-      │
-      ▼
-  Recherche de soumissions AC (f.Status=AC, f.LanguageName=...)
-      │
-      ▼
-  Filtrage par utilisateurs distincts (max 3 par langage)
-      │
-      ▼
-  Pagination (jusqu'à 10 pages si nécessaire)
-      │
-      ▼
-  Téléchargement du code source (<pre id="submission-code">)
-      │
-      ▼
-  Sauvegarde dans <output_dir>/<problem_name>/<Lang>/impl_XX.ext
-      │
-      ▼
-  Génération du fichier de métadonnées atcoder_metadata.json
-```
+### CodeValidator (RosettaCode)
 
-### Filtrage des langages
+Le `CodeValidator` sert a filtrer les blocs de code invalides recup sur RosettaCode. Il fait ca :
 
-Le scraper utilise deux niveaux de filtrage pour garantir la bonne correspondance des langages :
+1. Rejete les blocs vides
+2. Detecte le wikitext (`{{header|`, `[[Category:`, etc.)
+3. Rejete les blocs trop courts (< 80 chars ou < 5 lignes en mode strict)
+4. Detecte les blocs qui sont en fait du Python, Java, JavaScript etc. (et pas du C/C++/Rust/Go)
+5. Verifie que le code a la bonne "forme" (accolades, appels de fonction) et les marqueurs du langage cible
 
-1. **Filtre URL** (`f.LanguageName`) : paramètre de requête AtCoder pour pré-filtrer côté serveur
-2. **Vérification locale** (`lang_matches`) : validation stricte du texte de la colonne langage
-   - **C** : doit commencer par `C ` ou `C(` pour éviter C++, C#, Cython, etc.
-   - **C++** : vérifie la présence de `C++` dans le texte
-   - **Rust** / **Go** : vérifie que le texte commence par le nom du langage
-
-### Diversité des implémentations
-
-Pour chaque langage et problème, le scraper collecte jusqu'à 3 soumissions provenant d'**utilisateurs différents** (`seen_users`), ce qui garantit des implémentations diversifiées plutôt que des doublons du même auteur.
-
-### Authentification
-
-Le scraper nécessite un cookie `REVEL_SESSION` valide pour accéder aux soumissions AtCoder. Ce cookie est obtenu en se connectant manuellement sur le site et en copiant la valeur depuis les outils développeur du navigateur.
