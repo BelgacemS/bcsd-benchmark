@@ -251,3 +251,38 @@ def _prepare_c_source(src: Path, lang: str) -> tuple[Path, bool]:
     tmp.write(prefix + code + suffix)
     tmp.close()
     return Path(tmp.name), True
+
+
+
+
+def _tool_exists(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def _rust_target_installed(target: str) -> bool:
+    result = subprocess.run(
+        ["rustup", "target", "list", "--installed"],
+        capture_output=True, text=True,
+    )
+    return target in result.stdout
+
+
+def probe_toolchains() -> dict[tuple[str, str], dict[str, bool]]:
+    available: dict[tuple[str, str], dict[str, bool]] = {}
+
+    for toolchain, name, lang in C_COMPILER_CONFIGS + CPP_COMPILER_CONFIGS:
+        available[(lang, name)] = {
+            arch: _tool_exists(bin_)
+            for arch, (bin_, _) in toolchain.items()
+        }
+
+    has_rustup = _tool_exists("rustup") and _tool_exists("rustc")
+    available[("Rust", "rustc")] = {
+        arch: has_rustup and _rust_target_installed(target)
+        for arch, target in RUST_TARGETS.items()
+    }
+
+    has_go = _tool_exists("go")
+    available[("Go", "go")] = {arch: has_go for arch in GO_ARCHES}
+
+    return available
