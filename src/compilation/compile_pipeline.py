@@ -498,7 +498,7 @@ def find_sources(input_dir: Path) -> list[Path]:
     # Exclude already-compiled binaries sitting inside the output tree
     return sorted(s for s in sources if "binaries" not in s.parts)
 
-    
+
 
 
 @dataclass(frozen=True)
@@ -634,3 +634,43 @@ def run_pipeline(
         "Terminé — %d compilés  |  %d échoués  |  %d ignorés (toolchain manquant)",
         stats.ok, stats.fail, stats.skip,
     )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "-i", "--input",
+        type=Path, required=True,
+        help="Directory containing scraped source files",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=Path, default=Path("data/sample/binaries"),
+        help="Output directory for compiled binaries (default: data/sample/binaries)",
+    )
+    parser.add_argument(
+        "--arch",
+        nargs="+", choices=ALL_ARCHITECTURES, default=ALL_ARCHITECTURES,
+        metavar="ARCH",
+        help=f"Architectures to target (default: all). Choices: {ALL_ARCHITECTURES}",
+    )
+    parser.add_argument(
+        "--opt",
+        nargs="+", default=None,
+        metavar="LEVEL",
+        help="Optimization levels (default: all per language). E.g.: O0 O2 O3",
+    )
+    parser.add_argument(
+        "-j", "--jobs",
+        type=int, default=os.cpu_count() or 4,
+        help="Number of parallel compilation workers (default: number of CPUs)",
+    )
+    parser.add_argument(
+        "--log",
+        type=Path, default=None,
+        help="Log file path (default: <output>/compile.log)",
+    )
+    return parser.parse_args()
