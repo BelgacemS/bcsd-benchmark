@@ -21,9 +21,10 @@ class CodeValidator:
         self.min_lines = 5
 
         self._wiki_patterns = [
-            re.compile(r"\{\{\s*header\s*\|", re.IGNORECASE), # pattern pour détecter le header de la section
-            re.compile(r"\{\{\s*lang\s*\|", re.IGNORECASE), # pattern pour détecter le langage de la section
-            re.compile(r"\[\[\s*Category:", re.IGNORECASE),
+            re.compile(r"\{\{\s*header\s*\|", re.IGNORECASE),   # pattern pour détecter le header de la section
+            re.compile(r"\{\{\s*lang\s*\|", re.IGNORECASE),     # pattern pour détecter le langage de la section
+            re.compile(r"\[\[\s*Category:", re.IGNORECASE),     # pattern pour détecter la categorie de la section
+            
             re.compile(r"<ref\b", re.IGNORECASE), 
             re.compile(r"</ref>", re.IGNORECASE),
         ]
