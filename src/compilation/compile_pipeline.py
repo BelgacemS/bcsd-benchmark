@@ -301,3 +301,54 @@ def _run(cmd: list[str], env: Optional[dict] = None) -> tuple[bool, str]:
         return result.returncode == 0, msg
     except subprocess.TimeoutExpired:
         return False, f"compilation a pris trop de temps {COMPILE_TIMEOUT}s"
+
+
+def _compile_c_family(
+    src: Path, out: Path, arch: str, opt: str,
+    toolchain: dict, lang: str, debug_flags: list[str],
+) -> tuple[bool, str]:
+    actual, wrapped = _prepare_c_source(src, lang)
+    try:
+        bin_, arch_flags = toolchain[arch]
+        extra = CPP_EXTRA_FLAGS if lang == "C++" else C_EXTRA_FLAGS
+        cmd = [bin_, *arch_flags, *extra, f"-{opt}", *debug_flags, "-o", str(out), str(actual)]
+        # Add -lm for math library linking
+        cmd.append("-lm")
+        return _run(cmd)
+    finally:
+        if wrapped:
+            actual.unlink(missing_ok=True)
+
+
+def compile_gcc(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    return _compile_c_family(src, out, arch, opt, GCC_TOOLCHAINS, "C", GCC_DEBUG_FLAGS)
+
+def compile_gxx(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    return _compile_c_family(src, out, arch, opt, GXX_TOOLCHAINS, "C++", GCC_DEBUG_FLAGS)
+
+def compile_clang(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    return _compile_c_family(src, out, arch, opt, CLANG_TOOLCHAINS, "C", CLANG_DEBUG_FLAGS)
+
+def compile_clangxx(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    return _compile_c_family(src, out, arch, opt, CLANGXX_TOOLCHAINS, "C++", CLANG_DEBUG_FLAGS)
+
+
+def compile_rust(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    crates, has_atcoder = _detect_external_crates(src)
+    if has_atcoder:
+        return False, "utilise ac_library AtCoder juge seulement"
+    if crates:
+        return _compile_rust_cargo(src, out, arch, opt, crates)
+    target    = RUST_TARGETS[arch]
+    opt_level = opt[1]
+    cmd = [
+        "rustc",
+        "--target", target,
+        "-C", f"opt-level={opt_level}",
+        "-C", "debuginfo=2",    
+    ]
+    linker = RUST_LINKERS.get(arch)
+    if linker:
+        cmd += ["-C", f"linker={linker}"]
+    cmd += ["-o", str(out), str(src)]
+    return _run(cmd)
