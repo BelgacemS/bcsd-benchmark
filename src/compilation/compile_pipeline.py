@@ -352,3 +352,31 @@ def compile_rust(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
         cmd += ["-C", f"linker={linker}"]
     cmd += ["-o", str(out), str(src)]
     return _run(cmd)
+
+
+_RE_GO_EXTERNAL_IMPORT = re.compile(
+    r'import\s+(?:\(\s*(?:[^)]*\n)*?\s*"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^"]+)"'
+    r'|"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^"]+)")',
+    re.MULTILINE,
+)
+
+
+def _detect_go_external_imports(src: Path) -> list[str]:
+    code = src.read_text(errors="replace")
+    imports: set[str] = set()
+    for line in code.splitlines():
+        line = line.strip().strip('"')
+        if re.match(r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', line):
+            imports.add(line)
+        m = re.match(r'\s*"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^"]+)"', line)
+        if m:
+            imports.add(m.group(1))
+    block_re = re.compile(r'import\s*\((.*?)\)', re.DOTALL)
+    for block in block_re.findall(code):
+        for line in block.splitlines():
+            m = re.match(r'\s*(?:\w+\s+)?"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^"]+)"', line)
+            if m:
+                imports.add(m.group(1))
+    return sorted(imports)
+
+
