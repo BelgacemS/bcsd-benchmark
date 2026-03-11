@@ -31,7 +31,7 @@ pip install -r requirements.txt
 # Scrapers
 python src/scrapers/rosetta_scraper.py
 python src/scrapers/leetcode_scraper.py
-python src/scrapers/atcoder_scraper.py
+python src/scrapers/atcoder_scraper.py 
 
 # Telecharger un sample depuis GCP
 ./scripts/download_sample.sh leetcode 20
