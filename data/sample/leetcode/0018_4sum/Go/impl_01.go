@@ -1,3 +1,9 @@
+package main
+import (
+	"sort"
+)
+
+
 func fourSum(nums []int, target int) (ans [][]int) {
 	n := len(nums)
 	if n < 4 {
@@ -35,3 +41,5 @@ func fourSum(nums []int, target int) (ans [][]int) {
 	}
 	return
 }
+
+func main() {}

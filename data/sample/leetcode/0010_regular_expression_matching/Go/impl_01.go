@@ -1,3 +1,5 @@
+package main
+
 func isMatch(s string, p string) bool {
 	m, n := len(s), len(p)
 	f := make([][]int, m+1)
@@ -25,3 +27,5 @@ func isMatch(s string, p string) bool {
 	}
 	return dfs(0, 0)
 }
+
+func main() {}

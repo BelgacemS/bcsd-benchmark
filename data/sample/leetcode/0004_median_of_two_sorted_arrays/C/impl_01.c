@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 int findKth(int* nums1, int m, int i, int* nums2, int n, int j, int k) {
     if (i >= m)
         return nums2[j + k - 1];
@@ -23,3 +32,6 @@ double findMedianSortedArrays(int* nums1, int m, int* nums2, int n) {
     int b = findKth(nums1, m, 0, nums2, n, 0, (total + 2) / 2);
     return (a + b) / 2.0;
 }
+
+
+int main(void) { return 0; }

@@ -1,3 +1,5 @@
+struct Solution;
+
 use std::collections::HashMap;
 
 impl Solution {
@@ -17,3 +19,6 @@ impl Solution {
         stack.len() == 0
     }
 }
+
+
+fn main() {}

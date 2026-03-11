@@ -1,3 +1,5 @@
+package main
+
 func isValid(s string) bool {
 	stk := []rune{}
 	for _, c := range s {
@@ -15,3 +17,5 @@ func isValid(s string) bool {
 func match(l, r rune) bool {
 	return (l == '(' && r == ')') || (l == '[' && r == ']') || (l == '{' && r == '}')
 }
+
+func main() {}

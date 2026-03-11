@@ -1,3 +1,5 @@
+struct Solution;
+
 use std::collections::HashMap;
 
 impl Solution {
@@ -13,3 +15,6 @@ impl Solution {
         vec![]
     }
 }
+
+
+fn main() {}

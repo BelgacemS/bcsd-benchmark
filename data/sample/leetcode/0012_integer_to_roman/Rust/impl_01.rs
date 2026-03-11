@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn int_to_roman(num: i32) -> String {
         let cs = [
@@ -17,3 +19,6 @@ impl Solution {
         ans
     }
 }
+
+
+fn main() {}

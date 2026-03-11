@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 char* d[] = {"abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"};
 
 char** letterCombinations(char* digits, int* returnSize) {
@@ -35,3 +44,6 @@ char** letterCombinations(char* digits, int* returnSize) {
     *returnSize = size;
     return ans;
 }
+
+
+int main(void) { return 0; }

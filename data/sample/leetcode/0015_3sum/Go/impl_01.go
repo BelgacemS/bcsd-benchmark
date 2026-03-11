@@ -1,3 +1,9 @@
+package main
+import (
+	"sort"
+)
+
+
 func threeSum(nums []int) (ans [][]int) {
 	sort.Ints(nums)
 	n := len(nums)
@@ -26,3 +32,5 @@ func threeSum(nums []int) (ans [][]int) {
 	}
 	return
 }
+
+func main() {}

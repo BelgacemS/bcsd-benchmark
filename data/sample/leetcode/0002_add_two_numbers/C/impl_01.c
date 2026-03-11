@@ -1,3 +1,17 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
+struct ListNode {
+    int val;
+    struct ListNode *next;
+};
+
 
 /**
  * Definition for singly-linked list.
@@ -39,3 +53,6 @@ struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {
     free(dummy);
     return result;
 }
+
+
+int main(void) { return 0; }

@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 char* longestCommonPrefix(char** strs, int strsSize) {
     for (int i = 0; strs[0][i]; i++) {
         for (int j = 1; j < strsSize; j++) {
@@ -9,3 +18,6 @@ char* longestCommonPrefix(char** strs, int strsSize) {
     }
     return strs[0];
 }
+
+
+int main(void) { return 0; }

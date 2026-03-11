@@ -1,3 +1,5 @@
+package main
+
 func lengthOfLongestSubstring(s string) (ans int) {
 	cnt := [128]int{}
 	l := 0
@@ -11,3 +13,6 @@ func lengthOfLongestSubstring(s string) (ans int) {
 	}
 	return
 }
+
+
+func main() {}

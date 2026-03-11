@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn longest_common_prefix(strs: Vec<String>) -> String {
         let mut len = strs.iter().map(|s| s.len()).min().unwrap();
@@ -11,3 +13,6 @@ impl Solution {
         String::new()
     }
 }
+
+
+fn main() {}

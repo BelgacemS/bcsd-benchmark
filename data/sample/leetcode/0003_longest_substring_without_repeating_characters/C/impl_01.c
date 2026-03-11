@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 int lengthOfLongestSubstring(char* s) {
     int freq[256] = {0};
     int l = 0, r = 0;
@@ -20,3 +29,6 @@ int lengthOfLongestSubstring(char* s) {
 
     return ans;
 }
+
+
+int main(void) { return 0; }
