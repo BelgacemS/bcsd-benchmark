@@ -16,18 +16,10 @@ LANG_DIRS = {
     "Go": "Go",
 }
 
-# Nom du langage -> extension (pour rosette)
+# Nom du langage -> extension (pour rosetta)
 EXT_MAP = {
     "C": ".c",
     "C++": ".cpp",
-    "Rust": ".rs",
-    "Go": ".go",
-}
-
-# Nom du dossier -> extension (pour leetcode)
-FOLDER_EXT_MAP = {
-    "C": ".c",
-    "Cpp": ".cpp",
     "Rust": ".rs",
     "Go": ".go",
 }
