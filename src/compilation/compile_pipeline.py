@@ -178,3 +178,43 @@ def _compile_rust_cargo(
             return False, "binary not found after cargo build"
         return False, msg
 
+_CPP_BOILERPLATE = """\
+#include <algorithm>
+#include <climits>
+#include <cmath>
+#include <cstring>
+#include <iostream>
+#include <map>
+#include <queue>
+#include <set>
+#include <sstream>
+#include <stack>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+using namespace std;
+
+struct ListNode {
+    int val; ListNode *next;
+    ListNode() : val(0), next(nullptr) {}
+    ListNode(int x) : val(x), next(nullptr) {}
+};
+struct TreeNode {
+    int val; TreeNode *left, *right;
+    TreeNode() : val(0), left(nullptr), right(nullptr) {}
+    TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}
+};
+
+"""
+
+_C_BOILERPLATE = """\
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <ctype.h>
+
+"""
