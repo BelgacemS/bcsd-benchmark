@@ -218,3 +218,36 @@ _C_BOILERPLATE = """\
 #include <ctype.h>
 
 """
+
+_RE_HAS_INCLUDE = re.compile(r"^\s*#\s*include\b", re.MULTILINE)
+
+_RE_HAS_MAIN = re.compile(r"^[^/]*\b(?:int|void|signed|auto|int32_t)\s+main\s*\(",
+    re.MULTILINE,)
+
+_RE_HAS_MAIN_BARE = re.compile(r"^\s*main\s*\(", re.MULTILINE)
+
+_RE_ATCODER_HEADER = re.compile(r'#\s*include\s*[<"]atcoder/')
+
+
+def _prepare_c_source(src: Path, lang: str) -> tuple[Path, bool]:
+    code = src.read_text(errors="replace")
+
+    if _RE_ATCODER_HEADER.search(code):
+        return src, False 
+
+    has_includes = bool(_RE_HAS_INCLUDE.search(code))
+    has_main = bool(_RE_HAS_MAIN.search(code)) or bool(_RE_HAS_MAIN_BARE.search(code))
+
+    if has_includes and has_main:
+        return src, False
+
+    boilerplate = _CPP_BOILERPLATE if lang == "C++" else _C_BOILERPLATE
+    prefix = boilerplate if not has_includes else ""
+    suffix = "\nint main(void) { return 0; }\n" if not has_main else ""
+
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=src.suffix, delete=False, mode="w", encoding="utf-8"
+    )
+    tmp.write(prefix + code + suffix)
+    tmp.close()
+    return Path(tmp.name), True
