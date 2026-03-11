@@ -674,3 +674,27 @@ def parse_args() -> argparse.Namespace:
         help="Log file path (default: <output>/compile.log)",
     )
     return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    if not args.input.exists():
+        print(f"Error: input directory not found: {args.input}", file=sys.stderr)
+        sys.exit(1)
+
+    args.output.mkdir(parents=True, exist_ok=True)
+    log_file = args.log or (args.output / "compile.log")
+    log = setup_logging(log_file)
+
+    log.info("Input:  %s", args.input.resolve())
+    log.info("Output: %s", args.output.resolve())
+    log.info("Archs:  %s", args.arch)
+    log.info("Opts:   %s", args.opt or "all (per language)")
+    log.info("Jobs:   %d", args.jobs)
+
+    run_pipeline(args.input, args.output, args.arch, args.opt, log, args.jobs)
+
+
+if __name__ == "__main__":
+    main()
