@@ -286,3 +286,18 @@ def probe_toolchains() -> dict[tuple[str, str], dict[str, bool]]:
     available[("Go", "go")] = {arch: has_go for arch in GO_ARCHES}
 
     return available
+
+
+def _run(cmd: list[str], env: Optional[dict] = None) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=COMPILE_TIMEOUT,
+            env=env if env is not None else os.environ.copy(),
+        )
+        msg = (result.stderr or result.stdout).strip()
+        return result.returncode == 0, msg
+    except subprocess.TimeoutExpired:
+        return False, f"compilation a pris trop de temps {COMPILE_TIMEOUT}s"
