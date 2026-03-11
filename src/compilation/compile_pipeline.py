@@ -139,4 +139,42 @@ def _detect_external_crates(src: Path) -> tuple[list[str], bool]:
     unknown     = [c for c in crates if c not in CARGO_CRATES and c not in ATCODER_ONLY_CRATES]
     return resolvable + unknown, has_atcoder
 
-    
+
+def _compile_rust_cargo(
+    src: Path, out: Path, arch: str, opt: str, crates: list[str]
+) -> tuple[bool, str]:
+    target    = RUST_TARGETS[arch]
+    opt_level = opt[1]
+    dep_lines = "\n".join(
+        CARGO_CRATES.get(c, f'{c} = "*"') for c in crates
+    )
+    with tempfile.TemporaryDirectory(prefix="bscd_rust_") as tmp_str:
+        tmp = Path(tmp_str)
+        (tmp / "src").mkdir()
+        shutil.copy(src, tmp / "src" / "main.rs")
+        (tmp / "Cargo.toml").write_text(
+            "[package]\nname = \"bscd\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n"
+            f"[dependencies]\n{dep_lines}\n"
+        )
+        env = {
+            **os.environ,
+            "CARGO_PROFILE_RELEASE_OPT_LEVEL": opt_level,
+            "CARGO_PROFILE_RELEASE_DEBUG":      "true",
+        }
+        linker = RUST_LINKERS.get(arch)
+        if linker:
+            env[f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"] = linker
+        cmd = [
+            "cargo", "build", "--release",
+            "--target", target,
+            "--manifest-path", str(tmp / "Cargo.toml"),
+        ]
+        success, msg = _run(cmd, env)
+        if success:
+            built = tmp / "target" / target / "release" / "bscd"
+            if built.exists():
+                shutil.copy(built, out)
+                return True, ""
+            return False, "binary not found after cargo build"
+        return False, msg
+
