@@ -381,11 +381,9 @@ def _detect_go_external_imports(src: Path) -> list[str]:
 
 
 def compile_go(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
-    # Detect Go install: separate GOROOT from GOPATH
     go_bin = shutil.which("go")
     if not go_bin:
         return False, "go not found"
-    # GOROOT is the Go installation directory
     goroot = subprocess.run(
         [go_bin, "env", "GOROOT"], capture_output=True, text=True
     ).stdout.strip()
@@ -396,36 +394,31 @@ def compile_go(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
         "GOROOT": goroot,
         "GOPATH": "/tmp/bscd_gopath",
         "GOMODCACHE": "/tmp/bscd_gopath/pkg/mod",
-        "CGO_ENABLED": "0",  # pure Go cross-compilation
+        "CGO_ENABLED": "0",
         **GO_ARCHES[arch],
     }
-    # Remove conflicting env vars
     env.pop("GOFLAGS", None)
 
     external_imports = _detect_go_external_imports(src)
 
     if external_imports:
-        # Need a temporary go.mod with the required modules
         with tempfile.TemporaryDirectory(prefix="bscd_go_") as tmp_str:
             tmp = Path(tmp_str)
             shutil.copy(src, tmp / "main.go")
-            # Initialize go.mod
             init_result = subprocess.run(
                 [go_bin, "mod", "init", "bscd"],
                 cwd=str(tmp), capture_output=True, text=True, env=env,
                 timeout=COMPILE_TIMEOUT,
             )
             if init_result.returncode != 0:
-                return False, f"go mod init failed: {init_result.stderr.strip()}"
-            # go mod tidy to resolve deps
+                return False, f"go mod init a échoué: {init_result.stderr.strip()}"
             tidy_result = subprocess.run(
                 [go_bin, "mod", "tidy"],
                 cwd=str(tmp), capture_output=True, text=True, env=env,
                 timeout=COMPILE_TIMEOUT,
             )
             if tidy_result.returncode != 0:
-                return False, f"go mod tidy failed: {tidy_result.stderr.strip()}"
-            # Build from within the module directory
+                return False, f"go mod tidy a échoué: {tidy_result.stderr.strip()}"
             cmd = [go_bin, "build"]
             if opt == "O0":
                 cmd += ["-gcflags=all=-N -l"]
@@ -438,10 +431,69 @@ def compile_go(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
                 msg = (result.stderr or result.stdout).strip()
                 return result.returncode == 0, msg
             except subprocess.TimeoutExpired:
-                return False, f"compilation timed out after {COMPILE_TIMEOUT}s"
+                return False, f"compilation a pris trop de temps {COMPILE_TIMEOUT}s"
     else:
         cmd = [go_bin, "build"]
         if opt == "O0":
             cmd += ["-gcflags=all=-N -l"]
         cmd += ["-o", str(out), str(src)]
         return _run(cmd, env)
+
+
+
+COMPILE_FN: dict[tuple[str, str], ...] = {
+    ("C",    "gcc"):    compile_gcc,
+    ("C",    "clang"):  compile_clang,
+    ("C++",  "g++"):    compile_gxx,
+    ("C++",  "clang++"): compile_clangxx,
+    ("Rust", "rustc"):  compile_rust,
+    ("Go",   "go"):     compile_go,
+}
+
+LANG_COMPILERS: dict[str, list[str]] = {
+    "C":    ["gcc", "clang"],
+    "C++":  ["g++", "clang++"],
+    "Rust": ["rustc"],
+    "Go":   ["go"],
+}
+
+
+
+@dataclass
+class CompileStats:
+    ok: int = 0
+    fail: int = 0
+    skip: int = 0
+    _lock: Lock = field(default_factory=Lock)
+
+    def add(self, ok: int = 0, fail: int = 0, skip: int = 0) -> None:
+        with self._lock:
+            self.ok += ok
+            self.fail += fail
+            self.skip += skip
+
+
+def setup_logging(log_file: Path) -> logging.Logger:
+    log = logging.getLogger("compile_pipeline")
+    log.setLevel(logging.DEBUG)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S")
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(fmt)
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+
+    log.addHandler(console)
+    log.addHandler(file_handler)
+    return log
+
+
+def find_sources(input_dir: Path) -> list[Path]:
+    sources: list[Path] = []
+    for ext in EXT_TO_LANG:
+        sources.extend(input_dir.rglob(f"*{ext}"))
+    # Exclude already-compiled binaries sitting inside the output tree
+    return sorted(s for s in sources if "binaries" not in s.parts)
