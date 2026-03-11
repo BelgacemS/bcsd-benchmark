@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 int nums(char c) {
     switch (c) {
     case 'I': return 1;
@@ -19,3 +28,6 @@ int romanToInt(char* s) {
     }
     return ans;
 }
+
+
+int main(void) { return 0; }

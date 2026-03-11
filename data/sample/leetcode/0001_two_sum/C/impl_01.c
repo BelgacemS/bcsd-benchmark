@@ -42,3 +42,6 @@ int* twoSum(int* nums, int numsSize, int target, int* returnSize) {
     free(used);
     return NULL;
 }
+
+
+int main(void) { return 0; }

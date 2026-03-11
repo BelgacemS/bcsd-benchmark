@@ -1,12 +1,12 @@
 {
   "source": "leetcode",
   "repo": "https://github.com/doocs/leetcode",
-  "scrape_date": "2026-03-04T21:59:05.874881",
-  "total_tasks": 3342,
+  "scrape_date": "2026-03-10T21:05:01.397323",
+  "total_tasks": 3243,
   "implementations": {
-    "C": 173,
-    "Cpp": 3325,
-    "Rust": 1152,
-    "Go": 3293
+    "C": 166,
+    "Cpp": 2992,
+    "Rust": 1038,
+    "Go": 2924
   }
 }

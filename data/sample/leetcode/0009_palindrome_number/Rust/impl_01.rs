@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn is_palindrome(mut x: i32) -> bool {
         if x < 0 || (x != 0 && x % 10 == 0) {
@@ -11,3 +13,6 @@ impl Solution {
         x == y || x == y / 10
     }
 }
+
+
+fn main() {}

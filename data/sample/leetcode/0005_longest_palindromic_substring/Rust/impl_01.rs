@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn longest_palindrome(s: String) -> String {
         let (n, mut ans) = (s.len(), &s[..1]);
@@ -17,3 +19,6 @@ impl Solution {
         ans.to_string()
     }
 }
+
+
+fn main() {}

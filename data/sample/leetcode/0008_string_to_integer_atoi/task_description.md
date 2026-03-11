@@ -1,4 +1,4 @@
-# 8. String to Integer
+# 8. String to Integer (atoi)
 
 <p>Implement the <code>myAtoi(string s)</code> function, which converts a string to a 32-bit signed integer.</p>
 

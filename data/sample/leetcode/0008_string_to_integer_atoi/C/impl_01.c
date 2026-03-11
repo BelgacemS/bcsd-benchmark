@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 int myAtoi(char* s) {
     int i = 0;
 
@@ -23,3 +32,6 @@ int myAtoi(char* s) {
 
     return res * sign;
 }
+
+
+int main(void) { return 0; }

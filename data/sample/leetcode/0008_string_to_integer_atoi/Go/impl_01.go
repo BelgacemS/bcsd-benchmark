@@ -1,3 +1,9 @@
+package main
+import (
+	"math"
+)
+
+
 func myAtoi(s string) int {
 	i, n := 0, len(s)
 	num := 0
@@ -33,3 +39,5 @@ func myAtoi(s string) int {
 	}
 	return sign * num
 }
+
+func main() {}

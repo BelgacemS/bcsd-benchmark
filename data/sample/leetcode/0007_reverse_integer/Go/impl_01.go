@@ -1,3 +1,9 @@
+package main
+import (
+	"math"
+)
+
+
 func reverse(x int) (ans int) {
 	for ; x != 0; x /= 10 {
 		if ans < math.MinInt32/10 || ans > math.MaxInt32/10 {
@@ -7,3 +13,5 @@ func reverse(x int) (ans int) {
 	}
 	return
 }
+
+func main() {}

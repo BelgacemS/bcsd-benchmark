@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn reverse(mut x: i32) -> i32 {
         let is_minus = x < 0;
@@ -14,3 +16,6 @@ impl Solution {
         }
     }
 }
+
+
+fn main() {}

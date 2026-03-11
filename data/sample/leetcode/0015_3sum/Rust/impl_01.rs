@@ -1,3 +1,5 @@
+struct Solution;
+
 use std::cmp::Ordering;
 
 impl Solution {
@@ -38,3 +40,6 @@ impl Solution {
         res
     }
 }
+
+
+fn main() {}

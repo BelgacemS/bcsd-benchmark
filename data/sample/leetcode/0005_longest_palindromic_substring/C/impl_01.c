@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 char* longestPalindrome(char* s) {
     int n = strlen(s);
     bool** f = (bool**) malloc(n * sizeof(bool*));
@@ -29,3 +38,6 @@ char* longestPalindrome(char* s) {
     free(f);
     return res;
 }
+
+
+int main(void) { return 0; }

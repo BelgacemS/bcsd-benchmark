@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn letter_combinations(digits: String) -> Vec<String> {
         let mut ans: Vec<String> = Vec::new();
@@ -19,3 +21,6 @@ impl Solution {
         ans
     }
 }
+
+
+fn main() {}

@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 int cmp(const void* a, const void* b) {
     return *(int*) a - *(int*) b;
 }
@@ -41,3 +50,6 @@ int** threeSum(int* nums, int numsSize, int* returnSize, int** returnColumnSizes
     }
     return ans;
 }
+
+
+int main(void) { return 0; }

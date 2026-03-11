@@ -1,3 +1,5 @@
+package main
+
 func isPalindrome(x int) bool {
 	if x < 0 || (x > 0 && x%10 == 0) {
 		return false
@@ -8,3 +10,5 @@ func isPalindrome(x int) bool {
 	}
 	return x == y || x == y/10
 }
+
+func main() {}

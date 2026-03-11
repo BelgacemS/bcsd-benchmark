@@ -1,3 +1,5 @@
+struct Solution;
+
 impl Solution {
     pub fn is_match(s: String, p: String) -> bool {
         let (m, n) = (s.len(), p.len());
@@ -43,3 +45,6 @@ impl Solution {
         )
     }
 }
+
+
+fn main() {}

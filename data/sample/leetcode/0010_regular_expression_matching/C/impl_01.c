@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 #define MAX_LEN 1000
 
 char *ss, *pp;
@@ -31,3 +40,6 @@ bool isMatch(char* s, char* p) {
     memset(f, 0, sizeof(f));
     return dfs(0, 0);
 }
+
+
+int main(void) { return 0; }

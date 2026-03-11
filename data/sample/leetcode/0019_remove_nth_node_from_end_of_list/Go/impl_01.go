@@ -1,3 +1,11 @@
+package main
+
+type ListNode struct {
+	Val  int
+	Next *ListNode
+}
+
+
 /**
  * Definition for singly-linked list.
  * type ListNode struct {
@@ -17,3 +25,5 @@ func removeNthFromEnd(head *ListNode, n int) *ListNode {
 	slow.Next = slow.Next.Next
 	return dummy.Next
 }
+
+func main() {}

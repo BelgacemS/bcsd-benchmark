@@ -1,3 +1,9 @@
+package main
+import (
+	"sort"
+)
+
+
 func threeSumClosest(nums []int, target int) int {
 	sort.Ints(nums)
 	ans := 1 << 30
@@ -28,3 +34,5 @@ func abs(x int) int {
 	}
 	return x
 }
+
+func main() {}
