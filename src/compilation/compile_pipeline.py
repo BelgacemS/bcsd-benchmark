@@ -124,3 +124,19 @@ CARGO_CRATES: dict[str, str] = {
 
 ATCODER_ONLY_CRATES: set[str] = {"ac_library", "ac_library_rs"}
 _STDLIB_PREFIXES:    set[str] = {"std", "core", "alloc", "self", "super", "crate"}
+
+def _detect_external_crates(src: Path) -> tuple[list[str], bool]:
+    crates: set[str] = set()
+    for line in src.read_text(errors="replace").splitlines():
+        m = re.match(r"\s*use\s+([a-zA-Z_][a-zA-Z0-9_]*)", line)
+        if m and m.group(1) not in _STDLIB_PREFIXES:
+            crates.add(m.group(1))
+        m = re.match(r"\s*extern\s+crate\s+([a-zA-Z_][a-zA-Z0-9_]*)", line)
+        if m:
+            crates.add(m.group(1))
+    has_atcoder = bool(crates & ATCODER_ONLY_CRATES)
+    resolvable  = [c for c in crates if c in CARGO_CRATES]
+    unknown     = [c for c in crates if c not in CARGO_CRATES and c not in ATCODER_ONLY_CRATES]
+    return resolvable + unknown, has_atcoder
+
+    
