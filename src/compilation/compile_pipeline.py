@@ -380,3 +380,68 @@ def _detect_go_external_imports(src: Path) -> list[str]:
     return sorted(imports)
 
 
+def compile_go(src: Path, out: Path, arch: str, opt: str) -> tuple[bool, str]:
+    # Detect Go install: separate GOROOT from GOPATH
+    go_bin = shutil.which("go")
+    if not go_bin:
+        return False, "go not found"
+    # GOROOT is the Go installation directory
+    goroot = subprocess.run(
+        [go_bin, "env", "GOROOT"], capture_output=True, text=True
+    ).stdout.strip()
+
+    env = {
+        **os.environ,
+        "GOOS":   "linux",
+        "GOROOT": goroot,
+        "GOPATH": "/tmp/bscd_gopath",
+        "GOMODCACHE": "/tmp/bscd_gopath/pkg/mod",
+        "CGO_ENABLED": "0",  # pure Go cross-compilation
+        **GO_ARCHES[arch],
+    }
+    # Remove conflicting env vars
+    env.pop("GOFLAGS", None)
+
+    external_imports = _detect_go_external_imports(src)
+
+    if external_imports:
+        # Need a temporary go.mod with the required modules
+        with tempfile.TemporaryDirectory(prefix="bscd_go_") as tmp_str:
+            tmp = Path(tmp_str)
+            shutil.copy(src, tmp / "main.go")
+            # Initialize go.mod
+            init_result = subprocess.run(
+                [go_bin, "mod", "init", "bscd"],
+                cwd=str(tmp), capture_output=True, text=True, env=env,
+                timeout=COMPILE_TIMEOUT,
+            )
+            if init_result.returncode != 0:
+                return False, f"go mod init failed: {init_result.stderr.strip()}"
+            # go mod tidy to resolve deps
+            tidy_result = subprocess.run(
+                [go_bin, "mod", "tidy"],
+                cwd=str(tmp), capture_output=True, text=True, env=env,
+                timeout=COMPILE_TIMEOUT,
+            )
+            if tidy_result.returncode != 0:
+                return False, f"go mod tidy failed: {tidy_result.stderr.strip()}"
+            # Build from within the module directory
+            cmd = [go_bin, "build"]
+            if opt == "O0":
+                cmd += ["-gcflags=all=-N -l"]
+            cmd += ["-o", str(out.resolve()), "."]
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True,
+                    timeout=COMPILE_TIMEOUT, env=env, cwd=str(tmp),
+                )
+                msg = (result.stderr or result.stdout).strip()
+                return result.returncode == 0, msg
+            except subprocess.TimeoutExpired:
+                return False, f"compilation timed out after {COMPILE_TIMEOUT}s"
+    else:
+        cmd = [go_bin, "build"]
+        if opt == "O0":
+            cmd += ["-gcflags=all=-N -l"]
+        cmd += ["-o", str(out), str(src)]
+        return _run(cmd, env)
