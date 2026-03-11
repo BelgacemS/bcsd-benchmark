@@ -497,3 +497,140 @@ def find_sources(input_dir: Path) -> list[Path]:
         sources.extend(input_dir.rglob(f"*{ext}"))
     # Exclude already-compiled binaries sitting inside the output tree
     return sorted(s for s in sources if "binaries" not in s.parts)
+
+    
+
+
+@dataclass(frozen=True)
+class CompileJob:
+    src: Path
+    out: Path
+    lang: str
+    compiler: str
+    arch: str
+    opt: str
+    label: str  # for logging
+
+
+def _execute_job(job: CompileJob, log: logging.Logger) -> tuple[str, bool, str]:
+    job.out.parent.mkdir(parents=True, exist_ok=True)
+    success, msg = COMPILE_FN[(job.lang, job.compiler)](job.src, job.out, job.arch, job.opt)
+    return job.label, success, msg
+
+
+def _generate_jobs(
+    sources: list[Path],
+    input_dir: Path,
+    output_dir: Path,
+    available: dict[tuple[str, str], dict[str, bool]],
+    archs: list[str],
+    opts: Optional[list[str]],
+    log: logging.Logger,
+    stats: CompileStats,
+) -> list[CompileJob]:
+    jobs: list[CompileJob] = []
+    for src in sources:
+        lang = EXT_TO_LANG[src.suffix]
+        rel_dir = src.parent.relative_to(input_dir)
+        stem = src.stem
+        compilers = LANG_COMPILERS[lang]
+
+        for compiler in compilers:
+            opt_list = opts if opts is not None else OPT_LEVELS[lang]
+
+            for arch in archs:
+                if not available.get((lang, compiler), {}).get(arch):
+                    skip_count = sum(1 for o in opt_list if o in OPT_LEVELS[lang])
+                    log.debug("SKIP  %s/%s [%s/%s] — toolchain unavailable",
+                              rel_dir, stem, compiler, arch)
+                    stats.add(skip=skip_count)
+                    continue
+
+                for opt in opt_list:
+                    if opt not in OPT_LEVELS[lang]:
+                        continue
+                    out_dir = output_dir / rel_dir / compiler / arch / opt
+                    out = out_dir / f"{stem}.exe"
+                    label = f"{rel_dir}/{stem} [{compiler}/{arch}/{opt}]"
+                    jobs.append(CompileJob(
+                        src=src, out=out, lang=lang, compiler=compiler,
+                        arch=arch, opt=opt, label=label,
+                    ))
+    return jobs
+
+
+def run_pipeline(
+    input_dir: Path,
+    output_dir: Path,
+    archs: list[str],
+    opts: Optional[list[str]],
+    log: logging.Logger,
+    jobs: int = 1,
+) -> None:
+    log.info("Verifie les compilateurs necessaires")
+    available = probe_toolchains()
+
+    for (lang, compiler), arch_map in available.items():
+        for arch, ok in arch_map.items():
+            if arch in archs:
+                status = "OK" if ok else "MANQUANT"
+                level = logging.DEBUG if ok else logging.WARNING
+                log.log(level, "Toolchain %-5s / %-8s / %-7s — %s",
+                        lang, compiler, arch, status)
+
+    sources = find_sources(input_dir)
+    log.info("Trouvé %d fichier source dans %s", len(sources), input_dir)
+
+    stats = CompileStats()
+    compile_jobs = _generate_jobs(
+        sources, input_dir, output_dir, available, archs, opts, log, stats,
+    )
+    log.info("Généré %d job de compilation, utilisant %d worker(s)", len(compile_jobs), jobs)
+
+    if jobs == 1:
+        for i, job in enumerate(compile_jobs, 1):
+            label, success, msg = _execute_job(job, log)
+            if success:
+                log.debug("OK    %s", label)
+                stats.add(ok=1)
+            else:
+                first_line = msg.splitlines()[0] if msg else "erreur inconnue"
+                log.info("ECHEC  %s — %s", label, first_line)
+                log.debug("      Erreur complète:\n%s", msg)
+                stats.add(fail=1)
+            if i % 100 == 0:
+                log.info("Progression: %d/%d jobs faits", i, len(compile_jobs))
+    else:
+        
+        completed = 0
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = {
+                pool.submit(_execute_job, job, log): job
+                for job in compile_jobs
+            }
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    label, success, msg = future.result()
+                except Exception as exc:
+                    job = futures[future]
+                    log.info("ECHEC  %s — exception: %s", job.label, exc)
+                    stats.add(fail=1)
+                    continue
+
+                if success:
+                    log.debug("OK    %s", label)
+                    stats.add(ok=1)
+                else:
+                    first_line = msg.splitlines()[0] if msg else "erreur inconnue"
+                    log.info("ECHEC  %s — %s", label, first_line)
+                    log.debug("      Erreur complète:\n%s", msg)
+                    stats.add(fail=1)
+
+                if completed % 100 == 0:
+                    log.info("Progression: %d/%d jobs faits", completed, len(compile_jobs))
+
+    log.info(
+        "Terminé — %d compilés  |  %d échoués  |  %d ignorés (toolchain manquant)",
+        stats.ok, stats.fail, stats.skip,
+    )
