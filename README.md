@@ -1,33 +1,36 @@
 # BCSD Benchmark
 
-Projet de recherche en Binary Code Similarity Detection, Sorbonne Université, L3 Informatique.
+Projet de recherche en Binary Code Similarity Detection (BCSD), Sorbonne Université, L3 Informatique.
 
 ## Contexte
 
 Les modèles de similarité binaire (PalmTree, jTrans, Asm2Vec...) obtiennent de très
 bons résultats sur les benchmarks classiques (binutils, coreutils, OpenSSL) pour
-retrouver la même fonction compilée différemment. Mais ces benchmarks ne testent
-qu'un seul scénario : **même code source, compilations différentes**.
+retrouver une même fonction compilée avec différents compilateurs ou niveaux
+d'optimisation. Cependant, ces benchmarks ne couvrent qu'un seul scénario :
+**même code source, compilations différentes**.
 
-Une question reste ouverte : est-ce que ces modèles capturent la **sémantique** du
-code, ou seulement sa syntaxe ? Deux implémentations différentes du même algorithme
-produisent du code binaire très différent. Aucun benchmark existant ne permet
-vraiment de tester ce cas.
+La question de savoir si ces modèles capturent réellement la **sémantique** du
+code binaire, au-delà de sa syntaxe, reste largement ouverte. Deux implémentations
+indépendantes du même algorithme produisent du code binaire structurellement
+différent. Les benchmarks existants ne permettent pas d'évaluer ce cas.
 
 ## Objectif
 
-On construit un benchmark qui teste la similarité à **3 niveaux de difficulté** :
+Ce projet propose un benchmark qui évalue la similarité binaire à
+**trois niveaux de difficulté** :
 
 | Niveau | Description | Exemple |
 |--------|-------------|---------|
 | **Facile** | Même code, compilation différente | gcc -O0 vs clang -O3 |
-| **Moyen** | Même algorithme, implémentation différente | deux quicksorts différents en C |
+| **Moyen** | Même algorithme, implémentation différente | deux quicksorts indépendants en C |
 | **Difficile** | Même algorithme, langages différents | quicksort en C vs en C++ |
 
-Les niveaux moyen et difficile sont quasiment absents de la littérature. Notre dataset,
-construit à partir de plateformes de programmation compétitive (RosettaCode, LeetCode,
-AtCoder), contient plusieurs implémentations indépendantes des mêmes problèmes
-algorithmiques, ce qui rend ces niveaux possibles.
+Les niveaux moyen et difficile sont quasiment absents de la littérature
+(Marcelli et al., 2022). Notre dataset, construit à partir de plateformes de
+programmation compétitive (RosettaCode, LeetCode, AtCoder), contient plusieurs
+implémentations indépendantes des mêmes problèmes algorithmiques, ce qui rend
+l'évaluation de ces niveaux possible.
 
 ## Pipeline
 
@@ -37,7 +40,7 @@ sources C/C++ (28 000 fichiers)
 exécutables ELF x86-64
     | désassemblage (angr, filtrage DWARF)
 fonctions assembleur (JSON)
-    | embeddings (PalmTree, baselines)
+    | embeddings (modèles BCSD)
 vecteurs de similarité
     | benchmark (recall@1, MRR, ROC AUC)
 résultats + graphes
@@ -49,27 +52,27 @@ Les résultats sont dans `results/{approach}/` : métriques JSON, distribution
 des similarités, courbes ROC, heatmaps cross-compilateur, et recall@1 en
 fonction de la taille du pool.
 
-Le benchmark teste avec plusieurs tailles de pool (100, 1000, 10000) et des
-milliers de runs pour des intervalles de confiance solides.
+Le benchmark est évalué sur plusieurs tailles de pool (100, 1000, 10000) avec
+des milliers de runs pour garantir des intervalles de confiance statistiquement
+significatifs.
 
 ## Usage
 
 ### Test local (sample)
 
 ```bash
-python3 src/compile.py --test
-python3 src/disasm.py --test
-python3 src/embed_palmtree.py --device cpu
-python3 src/embed_baseline.py
-python3 src/benchmark.py
+python3 src/compile.py --test        # compilation
+python3 src/disasm.py --test         # désassemblage
+python3 src/embed_palmtree.py        # embeddings (un script par approche)
+python3 src/benchmark.py             # évaluation
 ```
 
 ### Full dataset (VM GCP)
 
 ```bash
 python3 src/gcp_build.py --phases compile disasm    # VM CPU
-python3 src/gcp_build.py --phases embed              # VM GPU
-python3 src/gcp_build.py --phases benchmark           # VM CPU
+python3 src/gcp_build.py --phases embed             # VM GPU
+python3 src/gcp_build.py --phases benchmark         # VM CPU
 ```
 
 ## Installation
