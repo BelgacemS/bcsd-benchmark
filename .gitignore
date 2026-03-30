@@ -7,10 +7,16 @@ __pycache__/
 .env
 
 .pytest_cache/
+.angr/
 
-data/compiled/
+data/sources/
+!data/sources/_test/
 data/binaries/
+data/disasm/
+data/embeddings/
+data/compile_manifest.json
 *.o
-*.bin
+compile_all.sh
 
+nohup.out
 sujet-04.pdf
