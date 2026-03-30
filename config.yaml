@@ -59,11 +59,6 @@ pipeline:
       optimiste: true
       realiste: false
 
-docker:
-  enabled: true
-  image: "bscd-compile"
-  platform: "linux/amd64"
-
 gcp:
   bucket: "gs://bscd-database"
   paths:
