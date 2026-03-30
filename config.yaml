@@ -1,0 +1,83 @@
+pipeline:
+  languages:
+    c:
+      extensions: [".c"]
+      standard: "c11"
+      dir_names: ["C"]
+    cpp:
+      extensions: [".cpp", ".cc", ".cxx"]
+      standard: "c++17"
+      dir_names: ["Cpp", "C++", "cpp"]
+
+  compilers:
+    gcc:
+      c: "gcc"
+      cpp: "g++"
+      debug_flags: ["-g3", "-gdwarf-4"]
+    clang:
+      c: "clang"
+      cpp: "clang++"
+      debug_flags: ["-g", "-gdwarf-4", "-fstandalone-debug"]
+
+  architectures:
+    x86_64:
+      flags: ["-m64"]
+
+  optimizations: ["O0", "O1", "O2", "O3", "Os"]
+
+  compile_flags:
+    common: ["-no-pie", "-fno-pie", "-fno-stack-protector", "-fcf-protection=none", "-lm"]
+
+  disassembly:
+    backend: "angr"
+    min_instructions: 5
+    skip_prefixes: ["_", "__", ".", "sub_", "frame_dummy", "register_tm", "deregister_tm", "main.cold"]
+    skip_plt: true
+    extract_cfg: false
+    use_dwarf_symbols: true
+
+  similarity:
+    approaches:
+      palmtree:
+        enabled: true
+        type: "instruction_embedding"
+
+  benchmark:
+    metrics: ["recall_at_1", "precision_at_1", "precision_at_5", "mrr", "roc_auc"]
+    pool_sizes: [100, 1000, 10000]
+    neg_ratio: 5
+    n_runs: 10
+    seed: 42
+    pair_types:
+      cross_compiler: true
+      cross_optim: true
+      cross_arch: false
+      cross_implementation: true
+      cross_language: true
+      cross_mixed: false
+    cadres:
+      optimiste: true
+      realiste: false
+
+docker:
+  enabled: true
+  image: "bscd-compile"
+  platform: "linux/amd64"
+
+gcp:
+  bucket: "gs://bscd-database"
+  paths:
+    sources: "sources"
+    binaries: "binaries"
+    disasm: "disasm"
+    embeddings: "embeddings"
+    results: "results"
+  sync: true
+
+paths:
+  sources: "data/sources"
+  binaries: "data/binaries"
+  disasm: "data/disasm"
+  embeddings: "data/embeddings"
+  results: "results"
+  test_sources: "data/sources/_test"
