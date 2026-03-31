@@ -1,6 +1,16 @@
-requests>=2.28.0
-tqdm>=4.60.0
-pytest>=7.0.0
-beautifulsoup4>=4.11.0
-google-cloud-storage>=2.10.0
-python-dotenv>=0.19.0
+# scraping
+requests>=2.28
+tqdm>=4.60
+beautifulsoup4>=4.11
+google-cloud-storage>=2.10
+python-dotenv>=0.19
+
+# pipeline
+pyyaml>=6.0
+angr>=9.2
+numpy>=1.24
+torch>=2.0
+scipy>=1.10
+scikit-learn>=1.2
+matplotlib>=3.7
+seaborn>=0.12
