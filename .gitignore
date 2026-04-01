@@ -2,15 +2,26 @@
 venv/
 __pycache__/
 *.pyc
-.env
+
 .DS_Store
-.vscode/
+.env
 
 .pytest_cache/
+.angr/
 
-data/compiled/
+data/sources/
+!data/sources/_test/
 data/binaries/
+data/disasm/
+data/embeddings/
+data/compile_manifest.json
 *.o
-*.bin
+compile_all.sh
 
+RECON_REPORT.md
+nohup.out
 sujet-04.pdf
+
+# clés GCP, ne jamais committer
+*.json
+!results/**/*.json
