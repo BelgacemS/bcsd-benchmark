@@ -1,0 +1,6 @@
+[submodule "lib/jtrans"]
+	path = lib/jtrans
+	url = https://github.com/vul337/jTrans
+[submodule "lib/palmtree"]
+	path = lib/palmtree
+	url = https://github.com/palmtreemodel/PalmTree.git
