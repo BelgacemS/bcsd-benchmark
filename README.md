@@ -1,52 +1,111 @@
-## BCSD Benchmark (Work In Progress)
+# BCSD Benchmark
 
-L'objectif du projet est de construire un benchmark diversifié et réaliste pour la détection de similarité de code binaire en exploitant des implémentations multi-langages de tâches identiques, puis d'évaluer les approches état de l'art sur ce nouveau benchmark.
+Benchmark pour la detection de similarite de code binaire (Binary Code Similarity Detection).
+On compile du code C/C++ avec differents compilateurs (GCC, Clang) et niveaux d'optimisation
+(O0 a Os), on desassemble avec angr, et on evalue les modeles d'embeddings (PalmTree, Asm2Vec,
+jTrans) sur leur capacite a capturer la similarite semantique plutot que syntaxique.
 
-### Structure du projet
+Projet de recherche, Sorbonne Universite, L3 Informatique.
+
+## Structure du projet
 
 ```
 bcsd-benchmark/
-├── src/
-│   ├── scrapers/          # collecte de code source
-│   ├── compilation/       # pipeline de compilation
-│   └── evaluation/        # evaluation BCSD
-├── data/
-│   └── sample/            # echantillon local du dataset
-├── scripts/               # utilitaires (download, upload GCP, metadata)
-├── tests/
-├── docs/
+├── config.yaml              # configuration de toute la pipeline
+├── CLAUDE.md                # instructions pour les agents
+├── ARCHITECTURE.md          # specs I/O entre modules
+├── AUDIT_REPORT.md          # audit de la codebase
 ├── requirements.txt
-└── README.md
+├── docker/
+│   └── Dockerfile           # image x86-64 pour la compilation
+├── lib/
+│   └── palmtree/            # modele PalmTree (clone depuis github)
+├── src/
+│   ├── compile.py           # compilation des sources en ELF
+│   ├── disasm.py            # desassemblage avec angr
+│   ├── embed_palmtree.py    # generation des embeddings PalmTree
+│   ├── benchmark.py         # evaluation (R@1, MRR, ROC AUC)
+│   ├── run_pipeline.py      # orchestrateur avec sync GCP
+│   ├── gcp_build.py         # compile + disasm sur VM GCP
+│   └── scrapers/            # scraping RosettaCode, LeetCode, AtCoder
+├── data/
+│   ├── sources/             # code source (sur GCP, sample en local)
+│   ├── binaries/            # executables ELF (gitignored)
+│   ├── disasm/              # JSON desassembles (gitignored)
+│   └── embeddings/          # vecteurs numpy (gitignored)
+├── results/
+│   └── palmtree/            # metriques, plots, rapport
+├── scripts/                 # utilitaires (download, upload)
+├── tests/
+└── docs/                    # rapport, notes de reunion
 ```
 
-### Installation
+## Prerequis
+
+- Python 3.10+
+- Docker (compilation cross x86-64 depuis Mac)
+- Google Cloud SDK (gsutil, pour la sync avec le bucket)
+- angr (desassemblage)
+
+## Installation
 
 ```bash
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+
+# image Docker pour la compilation
+docker build -t bscd-compile docker/
+
+# modele PalmTree
+git clone https://github.com/AsmFinder/PalmTree.git lib/palmtree
 ```
 
-### Utilisation rapide
+## Configuration
+
+Tout est dans `config.yaml` : langages, compilateurs, architectures, niveaux
+d'optimisation, backend de desassemblage, approches de similarite, types de
+paires pour le benchmark.
+
+## Usage
+
+### Test local rapide
 
 ```bash
-# Scrapers
-python src/scrapers/rosetta_scraper.py
-python src/scrapers/leetcode_scraper.py
-python src/scrapers/atcoder_scraper.py 
-
-# Telecharger un sample depuis GCP
-./scripts/download_sample.sh leetcode 20
-./scripts/download_sample.sh all 20
-
-# Scraper + upload GCP
-bash scripts/scrape_and_upload.sh
+python3 src/compile.py --test
+python3 src/disasm.py --test
+python3 src/embed_palmtree.py --test
+python3 src/benchmark.py --test
 ```
 
-Voir `src/scrapers/README.md` pour la documentation complete des scrapers.
+Ou via l'orchestrateur :
 
-### Langages cibles
+```bash
+python3 src/run_pipeline.py --test
+```
 
-C, C++, Rust, Go
+### Full dataset sur VM GCP
 
-### Donnees
+La compilation et le desassemblage des ~28 000 fichiers sont trop lents en local.
+`gcp_build.py` cree une VM x86-64 sur GCP, compile tout en parallele, desassemble
+avec angr, et push les resultats sur le bucket.
 
-Le dataset complet est stocke sur GCP (`gs://bscd-database/sources/`). En local on travaille avec un sample telecharge via `scripts/download_sample.sh`.
+```bash
+python3 src/gcp_build.py
+python3 src/gcp_build.py --dry-run
+python3 src/gcp_build.py --skip-compile
+python3 src/gcp_build.py --skip-disasm
+python3 src/gcp_build.py --parallel 48
+```
+
+### Benchmark
+
+```bash
+python3 src/benchmark.py
+python3 src/benchmark.py --approach palmtree
+```
+
+## Resultats
+
+Les resultats sont dans `results/{approach}/` : metriques JSON, plots de
+distribution des similarites, courbes ROC, heatmaps cross-compilateur,
+et rapport markdown genere automatiquement.
