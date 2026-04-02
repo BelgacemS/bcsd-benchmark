@@ -1,0 +1,1 @@
+s,p;main(n){for(scanf("%d",&n),p=n;p;p/=10)s+=p%10;puts(n%s?"No":"Yes");}

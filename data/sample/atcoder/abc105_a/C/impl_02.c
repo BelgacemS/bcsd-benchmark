@@ -1,0 +1,1 @@
+main(n,k){scanf("%d%d",&n,&k);puts(n%k?"1":"0");}

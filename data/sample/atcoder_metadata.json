@@ -1,0 +1,13 @@
+{
+  "source": "atcoder",
+  "contests": "abc100-abc445",
+  "scrape_date": "2026-03-05T08:33:57.678506",
+  "total_contests": 346,
+  "total_tasks": 1370,
+  "implementations": {
+    "Cpp": 3570,
+    "C": 3858,
+    "Rust": 4110,
+    "Go": 4110
+  }
+}

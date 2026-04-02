@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
+#include <ctype.h>
+
 char* convert(char* s, int numRows) {
     if (numRows == 1) {
         return strdup(s);
@@ -34,3 +43,6 @@ char* convert(char* s, int numRows) {
     free(idx);
     return ans;
 }
+
+
+int main(void) { return 0; }

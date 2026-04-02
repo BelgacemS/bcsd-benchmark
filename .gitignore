@@ -1,11 +1,30 @@
 .venv/
 venv/
 __pycache__/
-.env
-.DS_Store
+*.pyc
 
+.DS_Store
+.env
+.vscode/
+
+.pytest_cache/
+.angr/
+
+data/sources/
+!data/sources/_test/
+data/binaries/
+data/disasm/
+data/embeddings/
+data/compile_manifest.json
+*.o
+compile_all.sh
+
+nohup.out
 sujet-04.pdf
+<<<<<<< HEAD
 docs/rosetta_scraper_guide.tex
 data/output
 sujet-04 .pdf
 data/atcoder/
+=======
+>>>>>>> 10fbc437b57bf11e94fe16b1c8f74240ac4d15a7
