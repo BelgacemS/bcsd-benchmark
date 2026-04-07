@@ -1,56 +1,62 @@
 #!/usr/bin/env python3
+# benchmark refuse : pool partage par run, matmul GPU (ROCm/CUDA) + ranking vectorise
 
 from __future__ import annotations
 
 import argparse
 import json
 import sqlite3
+import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
 
+import numpy as np
 
-np = None
 torch = None
-roc_auc_score = None
+GPU = False
+DEVICE = None
 
 
-def _ensure_deps() -> None:
-    global np, torch, roc_auc_score
-    if np is not None and torch is not None and roc_auc_score is not None:
-        return
+def init_gpu(device_arg):
+    global torch, GPU, DEVICE
     try:
-        import numpy as _np
-        import torch as _torch
-        from sklearn.metrics import roc_auc_score as _roc_auc_score
-    except ImportError as e:
-        raise RuntimeError(
-            "benchmark_refuse_vectorized.py requires numpy, torch, and scikit-learn. Install requirements.txt first."
-        ) from e
-    np = _np
-    torch = _torch
-    roc_auc_score = _roc_auc_score
+        import torch as _t
+        torch = _t
+    except ImportError:
+        print("  torch absent, fallback numpy CPU")
+        return
+
+    if device_arg == "cpu":
+        print("  device force CPU")
+        return
+
+    if torch.cuda.is_available():
+        GPU = True
+        DEVICE = torch.device("cuda")
+        name = torch.cuda.get_device_name(0)
+        vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"  GPU: {name} ({vram:.1f} GB)")
+    else:
+        print("  GPU non disponible, fallback numpy CPU")
 
 
-def load_vectorized_embeddings(embeddings_npy: Path, embeddings_ids_npy: Path) -> Tuple[np.ndarray, np.ndarray]:
-    """Load embeddings from .npy files and normalize them."""
-    _ensure_deps()
-    embeddings_matrix = np.load(str(embeddings_npy)).astype(np.float32)
-    embedding_ids = np.load(str(embeddings_ids_npy)).astype(np.int64)
-    
-    # Normalize embeddings
-    norms = np.linalg.norm(embeddings_matrix, axis=1, keepdims=True)
-    norms[norms == 0.0] = 1.0
-    embeddings_matrix = embeddings_matrix / norms
-    
-    return embeddings_matrix, embedding_ids
+# --- chargement ---
+
+def load_embeddings(emb_path, ids_path):
+    mat = np.load(str(emb_path)).astype(np.float32)
+    ids = np.load(str(ids_path)).astype(np.int64)
+
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    mat /= norms
+
+    print(f"  {mat.shape[0]} vecteurs, dim={mat.shape[1]}")
+    return mat, ids
 
 
-def load_metadata(db_path: Path) -> List[dict]:
-    """Load metadata from database (for pair construction)."""
+def load_metadata(db_path):
     conn = sqlite3.connect(str(db_path))
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT f.id, f.function_name, b.compiler, b.architecture, b.optimization,
                i.id, i.implementation_folder, i.source_language, p.platform, p.problem_name
         FROM functions f
@@ -58,40 +64,29 @@ def load_metadata(db_path: Path) -> List[dict]:
         JOIN implementations i ON i.id = b.implementation_id
         JOIN problems p ON p.id = i.problem_id
         ORDER BY f.id
-        """
-    ).fetchall()
+    """).fetchall()
     conn.close()
-    
+
     records = []
     for row in rows:
-        (
-            fn_id,
-            function_name,
-            compiler,
-            architecture,
-            optimization,
-            impl_id,
-            impl_folder,
-            source_language,
-            platform,
-            problem_name,
-        ) = row
         records.append({
-            'function_id': int(fn_id),
-            'function_name': function_name,
-            'compiler': compiler,
-            'architecture': architecture,
-            'optimization': optimization,
-            'implementation_id': int(impl_id),
-            'implementation_folder': impl_folder,
-            'source_language': source_language or 'unknown',
-            'platform': platform,
-            'problem_name': problem_name,
+            'function_id': int(row[0]),
+            'function_name': row[1],
+            'compiler': row[2],
+            'architecture': row[3],
+            'optimization': row[4],
+            'implementation_id': int(row[5]),
+            'implementation_folder': row[6],
+            'source_language': row[7] or 'unknown',
+            'platform': row[8],
+            'problem_name': row[9],
         })
     return records
 
 
-def _pairs_from_group(indexes: Sequence[int]) -> List[Tuple[int, int]]:
+# --- pair builders ---
+
+def _pairs_from_group(indexes):
     out = []
     for i in range(len(indexes)):
         for j in range(i + 1, len(indexes)):
@@ -99,17 +94,11 @@ def _pairs_from_group(indexes: Sequence[int]) -> List[Tuple[int, int]]:
     return out
 
 
-def build_cross_compiler_pairs(records: List[dict], max_pairs: int = 0) -> List[Tuple[int, int]]:
+def build_cross_compiler_pairs(records, max_pairs=0):
     groups = defaultdict(list)
     for idx, r in enumerate(records):
-        key = (
-            r["platform"],
-            r["problem_name"],
-            r["implementation_id"],
-            r["function_name"],
-            r["architecture"],
-            r["optimization"],
-        )
+        key = (r["platform"], r["problem_name"], r["implementation_id"],
+               r["function_name"], r["architecture"], r["optimization"])
         groups[key].append(idx)
 
     pairs = []
@@ -117,22 +106,16 @@ def build_cross_compiler_pairs(records: List[dict], max_pairs: int = 0) -> List[
         for i, j in _pairs_from_group(idxs):
             if records[i]["compiler"] != records[j]["compiler"]:
                 pairs.append((i, j))
-                if max_pairs > 0 and len(pairs) >= max_pairs:
+                if 0 < max_pairs <= len(pairs):
                     return pairs
     return pairs
 
 
-def build_cross_optim_pairs(records: List[dict], max_pairs: int = 0) -> List[Tuple[int, int]]:
+def build_cross_optim_pairs(records, max_pairs=0):
     groups = defaultdict(list)
     for idx, r in enumerate(records):
-        key = (
-            r["platform"],
-            r["problem_name"],
-            r["implementation_id"],
-            r["function_name"],
-            r["architecture"],
-            r["compiler"],
-        )
+        key = (r["platform"], r["problem_name"], r["implementation_id"],
+               r["function_name"], r["architecture"], r["compiler"])
         groups[key].append(idx)
 
     pairs = []
@@ -140,23 +123,16 @@ def build_cross_optim_pairs(records: List[dict], max_pairs: int = 0) -> List[Tup
         for i, j in _pairs_from_group(idxs):
             if records[i]["optimization"] != records[j]["optimization"]:
                 pairs.append((i, j))
-                if max_pairs > 0 and len(pairs) >= max_pairs:
+                if 0 < max_pairs <= len(pairs):
                     return pairs
     return pairs
 
 
-def build_cross_implementation_pairs(records: List[dict], max_pairs: int = 0) -> List[Tuple[int, int]]:
+def build_cross_implementation_pairs(records, max_pairs=0):
     groups = defaultdict(list)
     for idx, r in enumerate(records):
-        key = (
-            r["platform"],
-            r["problem_name"],
-            r["source_language"],
-            r["function_name"],
-            r["compiler"],
-            r["architecture"],
-            r["optimization"],
-        )
+        key = (r["platform"], r["problem_name"], r["source_language"],
+               r["function_name"], r["compiler"], r["architecture"], r["optimization"])
         groups[key].append(idx)
 
     pairs = []
@@ -164,22 +140,16 @@ def build_cross_implementation_pairs(records: List[dict], max_pairs: int = 0) ->
         for i, j in _pairs_from_group(idxs):
             if records[i]["implementation_id"] != records[j]["implementation_id"]:
                 pairs.append((i, j))
-                if max_pairs > 0 and len(pairs) >= max_pairs:
+                if 0 < max_pairs <= len(pairs):
                     return pairs
     return pairs
 
 
-def build_cross_language_pairs(records: List[dict], max_pairs: int = 0) -> List[Tuple[int, int]]:
+def build_cross_language_pairs(records, max_pairs=0):
     groups = defaultdict(list)
     for idx, r in enumerate(records):
-        key = (
-            r["platform"],
-            r["problem_name"],
-            r["function_name"],
-            r["compiler"],
-            r["architecture"],
-            r["optimization"],
-        )
+        key = (r["platform"], r["problem_name"], r["function_name"],
+               r["compiler"], r["architecture"], r["optimization"])
         groups[key].append(idx)
 
     pairs = []
@@ -187,7 +157,7 @@ def build_cross_language_pairs(records: List[dict], max_pairs: int = 0) -> List[
         for i, j in _pairs_from_group(idxs):
             if records[i]["source_language"] != records[j]["source_language"]:
                 pairs.append((i, j))
-                if max_pairs > 0 and len(pairs) >= max_pairs:
+                if 0 < max_pairs <= len(pairs):
                     return pairs
     return pairs
 
@@ -200,216 +170,84 @@ PAIR_BUILDERS = {
 }
 
 
-def _sample_distractors(
-    rng: np.random.RandomState,
-    records: List[dict],
-    query_idx: int,
-    positive_idx: int,
-    pool_size: int,
-) -> np.ndarray:
-    """Sample distractor indices for a query-positive pair."""
-    _ensure_deps()
-    need = pool_size - 1
-    if need <= 0:
-        return np.array([], dtype=np.int64)
+# --- coeur vectorise : pool partage par run ---
 
-    q_problem = (records[query_idx]["platform"], records[query_idx]["problem_name"])
-    candidates = [
-        i
-        for i in range(len(records))
-        if i != query_idx
-        and i != positive_idx
-        and (records[i]["platform"], records[i]["problem_name"]) != q_problem
-    ]
-    if not candidates:
-        return np.array([], dtype=np.int64)
+def run_experiment(matrix, mat_gpu, q_idxs, p_idxs, pool_size, seed, n_runs, max_queries):
+    # pool partage : un seul set de distracteurs par run
+    # matmul : (n_queries, dim) x (dim, pool_size) au lieu de per-query sampling
+    N = matrix.shape[0]
+    n_pairs = len(q_idxs)
 
-    if len(candidates) >= need:
-        picked = rng.choice(candidates, size=need, replace=False)
+    if n_pairs == 0:
+        return {"nb_queries": 0, "recall_at_1": {"mean": 0, "std": 0},
+                "mrr": {"mean": 0, "std": 0}}
+
+    nb_d = min(pool_size - 1, N - 2)
+    if nb_d < 1:
+        return {"nb_queries": 0, "recall_at_1": {"mean": 0, "std": 0},
+                "mrr": {"mean": 0, "std": 0}}
+
+    # si moins de paires que max_queries, on les precalcule une seule fois
+    fixed = n_pairs <= max_queries
+
+    if fixed and GPU and mat_gpu is not None:
+        qi_t = torch.from_numpy(q_idxs).to(DEVICE)
+        pi_t = torch.from_numpy(p_idxs).to(DEVICE)
+        cached_q = mat_gpu[qi_t]
+        cached_pos = (cached_q * mat_gpu[pi_t]).sum(dim=1)
+    elif fixed:
+        cached_q = matrix[q_idxs]
+        cached_pos = (cached_q * matrix[p_idxs]).sum(axis=1)
     else:
-        picked = rng.choice(candidates, size=need, replace=True)
-    return np.array(picked, dtype=np.int64)
+        cached_q = cached_pos = None
 
-
-def _build_problem_codes(records: List[dict]) -> np.ndarray:
-    _ensure_deps()
-    codebook = {}
-    codes = np.empty(len(records), dtype=np.int32)
-    next_code = 0
-    for idx, rec in enumerate(records):
-        key = (rec["platform"], rec["problem_name"])
-        code = codebook.get(key)
-        if code is None:
-            code = next_code
-            codebook[key] = code
-            next_code += 1
-        codes[idx] = code
-    return codes
-
-
-def _sample_distractors_fast(
-    rng: np.random.RandomState,
-    total_records: int,
-    problem_codes: np.ndarray,
-    query_idx: int,
-    positive_idx: int,
-    pool_size: int,
-) -> np.ndarray:
-    need = pool_size - 1
-    if need <= 0:
-        return np.empty((0,), dtype=np.int64)
-
-    q_code = problem_codes[query_idx]
-    out = np.empty((need,), dtype=np.int64)
-    filled = 0
-
-    while filled < need:
-        remaining = need - filled
-        draw = max(remaining * 2, 64)
-        candidates = rng.randint(0, total_records, size=draw, dtype=np.int64)
-        valid = (
-            (candidates != query_idx)
-            & (candidates != positive_idx)
-            & (problem_codes[candidates] != q_code)
-        )
-        picked = candidates[valid]
-        if picked.size == 0:
-            continue
-        take = min(remaining, picked.size)
-        out[filled : filled + take] = picked[:take]
-        filled += take
-
-    return out
-
-
-def run_pool_vectorized(
-    embeddings_matrix: np.ndarray,
-    records: List[dict],
-    pairs: List[Tuple[int, int]],
-    pool_size: int,
-    seed: int,
-    n_runs: int,
-    max_queries: int,
-    device: str,
-) -> Dict:
-    """Run vectorized similarity computation using numpy and optionally PyTorch for GPU."""
-    _ensure_deps()
     all_r1 = []
     all_mrr = []
-    all_auc = []
-    
-    # Check if we should use GPU
-    use_gpu = device.startswith("cuda") or (device == "" and torch.cuda.is_available())
-    dev = torch.device(device if device else ("cuda" if torch.cuda.is_available() else "cpu"))
-    
-    if use_gpu:
-        embeddings_tensor = torch.from_numpy(embeddings_matrix).to(dev)
 
-    total_records = len(records)
-    problem_codes = _build_problem_codes(records)
-
-    if pool_size <= 100:
-        chunk_size = 1024
-    elif pool_size <= 1000:
-        chunk_size = 256
-    else:
-        chunk_size = 64
-    
     for run in range(n_runs):
         rng = np.random.RandomState(seed + run)
-        
-        # Sample pairs for this run
-        if len(pairs) > max_queries:
-            sample_ids = rng.choice(len(pairs), size=max_queries, replace=False)
-            sampled = [pairs[int(i)] for i in sample_ids]
+
+        if fixed:
+            q_vecs = cached_q
+            pos_sim = cached_pos
+            n = n_pairs
         else:
-            sampled = pairs
-        
-        if not sampled:
-            continue
-        
-        # Extract query and positive indices, sample distractors
-        q_idx = []
-        p_idx = []
-        distract_idx = []
-        for i, j in sampled:
-            d = _sample_distractors_fast(
-                rng=rng,
-                total_records=total_records,
-                problem_codes=problem_codes,
-                query_idx=i,
-                positive_idx=j,
-                pool_size=pool_size,
-            )
-            q_idx.append(i)
-            p_idx.append(j)
-            distract_idx.append(d)
-        
-        if not q_idx:
-            continue
-        
-        q_idx_np = np.array(q_idx, dtype=np.int64)
-        p_idx_np = np.array(p_idx, dtype=np.int64)
-        
-        if use_gpu:
-            q_t = embeddings_tensor[torch.from_numpy(q_idx_np).to(dev)]
-            p_t = embeddings_tensor[torch.from_numpy(p_idx_np).to(dev)]
-            pos_scores = torch.sum(q_t * p_t, dim=1)
-            ranks = torch.ones((q_t.shape[0],), dtype=torch.int32, device=dev)
+            sel = rng.choice(n_pairs, max_queries, replace=False)
+            q, p = q_idxs[sel], p_idxs[sel]
+            n = len(q)
+            if GPU and mat_gpu is not None:
+                q_t = torch.from_numpy(q).to(DEVICE)
+                p_t = torch.from_numpy(p).to(DEVICE)
+                q_vecs = mat_gpu[q_t]
+                pos_sim = (q_vecs * mat_gpu[p_t]).sum(dim=1)
+            else:
+                q_vecs = matrix[q]
+                pos_sim = (q_vecs * matrix[p]).sum(axis=1)
 
-            for start in range(0, q_t.shape[0], chunk_size):
-                end = min(start + chunk_size, q_t.shape[0])
-                d_chunk_np = np.stack(distract_idx[start:end], axis=0)
-                d_chunk_t = embeddings_tensor[torch.from_numpy(d_chunk_np).to(dev)]
-                q_chunk = q_t[start:end]
-                pos_chunk = pos_scores[start:end]
-                neg_scores = torch.einsum("nkd,nd->nk", d_chunk_t, q_chunk)
-                ranks[start:end] += torch.sum(neg_scores >= pos_chunk.unsqueeze(1), dim=1).to(torch.int32)
+        # pool partage : memes distracteurs pour toutes les queries du run
+        d_idx = rng.choice(N, nb_d, replace=False)
 
-            ranks_np = ranks.detach().cpu().numpy()
-            pos_scores_np = pos_scores.detach().cpu().numpy()
+        # matmul : (n, dim) x (dim, nb_d) -> (n, nb_d)
+        if GPU and mat_gpu is not None:
+            d_t = torch.from_numpy(d_idx).to(DEVICE)
+            d_sims = torch.mm(q_vecs, mat_gpu[d_t].T)
+            ranks = 1 + (d_sims >= pos_sim.unsqueeze(1)).sum(dim=1)
+            ranks_np = ranks.cpu().numpy()
         else:
-            q_vecs = embeddings_matrix[q_idx_np]
-            p_vecs = embeddings_matrix[p_idx_np]
-            pos_scores_np = np.sum(q_vecs * p_vecs, axis=1)
-            ranks_np = np.ones((q_vecs.shape[0],), dtype=np.int32)
+            d_sims = q_vecs @ matrix[d_idx].T
+            ranks_np = 1 + np.sum(d_sims >= pos_sim[:, None], axis=1)
 
-            for start in range(0, q_vecs.shape[0], chunk_size):
-                end = min(start + chunk_size, q_vecs.shape[0])
-                d_chunk = np.stack(distract_idx[start:end], axis=0)
-                d_vecs = embeddings_matrix[d_chunk]
-                q_chunk = q_vecs[start:end]
-                pos_chunk = pos_scores_np[start:end]
-                neg_scores = np.einsum("nkd,nd->nk", d_vecs, q_chunk)
-                ranks_np[start:end] += np.sum(neg_scores >= pos_chunk[:, None], axis=1)
-        
-        # Compute metrics
-        r1 = np.mean(ranks_np == 1)
-        mrr = np.mean(1.0 / ranks_np)
-        all_r1.append(float(r1))
-        all_mrr.append(float(mrr))
-        
-        all_auc = all_auc
-    
+        all_r1.append(float(np.mean(ranks_np == 1)))
+        all_mrr.append(float(np.mean(1.0 / ranks_np)))
+
     return {
-        "recall_at_1": {
-            "mean": float(np.mean(all_r1)) if all_r1 else 0.0,
-            "std": float(np.std(all_r1)) if all_r1 else 0.0,
-        },
-        "mrr": {
-            "mean": float(np.mean(all_mrr)) if all_mrr else 0.0,
-            "std": float(np.std(all_mrr)) if all_mrr else 0.0,
-        },
-        "roc_auc": (
-            {
-                "mean": float(np.mean(all_auc)),
-                "std": float(np.std(all_auc)),
-            }
-            if all_auc
-            else None
-        ),
+        "nb_queries": n_pairs if fixed else max_queries,
+        "recall_at_1": {"mean": float(np.mean(all_r1)), "std": float(np.std(all_r1))},
+        "mrr": {"mean": float(np.mean(all_mrr)), "std": float(np.std(all_mrr))},
     }
 
+
+# --- rapport ---
 
 def fmt_metric(m):
     if m is None:
@@ -419,18 +257,11 @@ def fmt_metric(m):
     return f"{m:.4f}"
 
 
-def write_report(
-    out_path: Path,
-    results: Dict,
-    pool_sizes: List[int],
-    n_runs: int,
-    seed: int,
-    total_functions: int,
-):
+def write_report(out_path, results, pool_sizes, n_runs, seed, total_functions):
     lines = []
-    lines.append("# Rapport benchmark : refuse (vectorized)")
+    lines.append("# Rapport benchmark : REFuSe")
     lines.append("")
-    lines.append("Approche : **REFuSe (Vectorized)**")
+    lines.append("Approche : **REFuSe**")
     lines.append(f"Seed : {seed}, n_runs : {n_runs}")
     lines.append(f"Fonctions : {total_functions}")
     lines.append("")
@@ -440,83 +271,79 @@ def write_report(
     for pt, pt_res in results.items():
         lines.append(f"### {pt} ({pt_res.get('nb_pairs', 0)} paires)")
         lines.append("")
-        lines.append("| Pool | Recall@1 | MRR | ROC AUC |")
-        lines.append("|------|----------|-----|---------|")
+        lines.append("| Pool | Recall@1 | MRR |")
+        lines.append("|------|----------|-----|")
         for psz in pool_sizes:
             pk = f"pool_{psz}"
             m = pt_res.get("pools", {}).get(pk)
             if m is None:
-                lines.append(f"| {psz} | N/A | N/A | N/A |")
+                lines.append(f"| {psz} | N/A | N/A |")
             else:
-                lines.append(
-                    f"| {psz} | {fmt_metric(m.get('recall_at_1'))} | {fmt_metric(m.get('mrr'))} | {fmt_metric(m.get('roc_auc'))} |"
-                )
+                lines.append(f"| {psz} | {fmt_metric(m.get('recall_at_1'))} | {fmt_metric(m.get('mrr'))} |")
         lines.append("")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_benchmark(
-    db_path: Path,
-    embeddings_npy: Path,
-    embeddings_ids_npy: Path,
-    out_dir: Path,
-    pool_sizes: List[int],
-    n_runs: int,
-    seed: int,
-    max_queries: int,
-    device: str,
-    pair_types: List[str],
-    max_pairs_per_type: int,
-) -> None:
-    """Run vectorized benchmark using pre-computed embeddings."""
-    _ensure_deps()
-    
-    print("[benchmark_refuse_vectorized] loading embeddings from .npy files...")
-    embeddings_matrix, embedding_ids = load_vectorized_embeddings(embeddings_npy, embeddings_ids_npy)
-    print(f"[benchmark_refuse_vectorized] loaded vectors: {embeddings_matrix.shape[0]}, dim={embeddings_matrix.shape[1]}")
-    
-    print("[benchmark_refuse_vectorized] loading metadata from database...")
+# --- orchestration ---
+
+def run_benchmark(db_path, emb_path, ids_path, out_dir, pool_sizes,
+                  n_runs, seed, max_queries, device, pair_types, max_pairs_per_type):
+    init_gpu(device)
+
+    print("Chargement embeddings...")
+    matrix, emb_ids = load_embeddings(emb_path, ids_path)
+
+    print("Chargement metadata...")
     records = load_metadata(db_path)
-    print(f"[benchmark_refuse_vectorized] loaded records: {len(records)}")
-    
-    if embeddings_matrix.shape[0] == 0:
-        raise RuntimeError("No embeddings found. Run embed_refuse_db.py --export-npy first.")
-    
-    if len(records) != embeddings_matrix.shape[0]:
-        raise RuntimeError(
-            f"Mismatch: {len(records)} records but {embeddings_matrix.shape[0]} embeddings"
-        )
-    
+    print(f"  {len(records)} records")
+
+    if len(records) != matrix.shape[0]:
+        raise RuntimeError(f"Mismatch: {len(records)} records mais {matrix.shape[0]} embeddings")
+
+    # GPU : transferer la matrice une seule fois
+    mat_gpu = None
+    if GPU and torch is not None:
+        mat_gpu = torch.from_numpy(matrix).to(DEVICE)
+        print(f"  matrice sur GPU ({matrix.nbytes / 1e6:.0f} MB)")
+
     results = {}
-    
-    for pair_type in pair_types:
-        builder = PAIR_BUILDERS[pair_type]
+    t_total = time.perf_counter()
+
+    for pt_name in pair_types:
+        builder = PAIR_BUILDERS[pt_name]
+        t0 = time.perf_counter()
+
         pairs = builder(records, max_pairs=max_pairs_per_type)
-        print(f"[benchmark_refuse_vectorized] {pair_type}: pairs={len(pairs)}")
-        
+        print(f"\n  {pt_name}: {len(pairs)} paires")
+
+        if not pairs:
+            results[pt_name] = {"nb_pairs": 0, "pools": {}}
+            continue
+
+        q_idxs = np.array([p[0] for p in pairs], dtype=np.int64)
+        p_idxs = np.array([p[1] for p in pairs], dtype=np.int64)
+
         pt_res = {"nb_pairs": len(pairs), "pools": {}}
-        for pool_size in pool_sizes:
-            print(f"  Running pool_size={pool_size}...")
-            metrics = run_pool_vectorized(
-                embeddings_matrix=embeddings_matrix,
-                records=records,
-                pairs=pairs,
-                pool_size=pool_size,
-                seed=seed,
-                n_runs=n_runs,
-                max_queries=max_queries,
-                device=device,
-            )
-            pt_res["pools"][f"pool_{pool_size}"] = metrics
-            print(
-                f"  pool={pool_size} R@1={metrics['recall_at_1']['mean']:.4f} "
-                f"MRR={metrics['mrr']['mean']:.4f}"
-            )
-        
-        results[pair_type] = pt_res
-    
+
+        for ps in pool_sizes:
+            metrics = run_experiment(matrix, mat_gpu, q_idxs, p_idxs,
+                                    ps, seed, n_runs, max_queries)
+            pt_res["pools"][f"pool_{ps}"] = metrics
+            r1 = metrics["recall_at_1"]
+            mrr = metrics["mrr"]
+            nq = metrics["nb_queries"]
+            print(f"    pool {ps}: R@1={r1['mean']:.4f}+/-{r1['std']:.4f} MRR={mrr['mean']:.4f} ({nq}q)")
+
+        results[pt_name] = pt_res
+        dt = time.perf_counter() - t0
+        print(f"    {pt_name} en {dt:.1f}s")
+
+    dt_total = time.perf_counter() - t_total
+    print(f"\n  Total: {dt_total:.1f}s")
+
+    # sauvegarde
     out_dir.mkdir(parents=True, exist_ok=True)
     output = {
         "approach": "refuse",
@@ -528,50 +355,32 @@ def run_benchmark(
         "stats": {"total_functions": len(records)},
     }
     (out_dir / "metrics.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
-    write_report(
-        out_path=out_dir / "rapport_benchmark.md",
-        results=results,
-        pool_sizes=pool_sizes,
-        n_runs=n_runs,
-        seed=seed,
-        total_functions=len(records),
-    )
-    print(f"[benchmark_refuse_vectorized] wrote: {out_dir / 'metrics.json'}")
-    print(f"[benchmark_refuse_vectorized] wrote: {out_dir / 'rapport_benchmark.md'}")
+    write_report(out_dir / "rapport_benchmark.md", results, pool_sizes, n_runs, seed, len(records))
+    print(f"  -> {out_dir / 'metrics.json'}")
+    print(f"  -> {out_dir / 'rapport_benchmark.md'}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Vectorized benchmark for REFuSe embeddings")
-    parser.add_argument("--db-path", default="refuse_benchmark.db", help="Path to SQLite DB")
-    parser.add_argument("--embeddings-npy", default="results/refuse_embeddings.npy", help="Path to embeddings .npy file")
-    parser.add_argument("--embeddings-ids-npy", default="results/refuse_embeddings.ids.npy", help="Path to embeddings IDs .npy file")
-    parser.add_argument("--out-dir", default="results/refuse", help="Output directory for results")
+def main():
+    parser = argparse.ArgumentParser(description="Benchmark REFuSe vectorise")
+    parser.add_argument("--db-path", default="refuse_benchmark.db")
+    parser.add_argument("--embeddings-npy", default="results/refuse_embeddings.npy")
+    parser.add_argument("--embeddings-ids-npy", default="results/refuse_embeddings.ids.npy")
+    parser.add_argument("--out-dir", default="results/refuse")
     parser.add_argument("--pool-sizes", nargs="+", type=int, default=[100, 1000, 10000])
     parser.add_argument("--n-runs", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-queries", type=int, default=5000)
-    parser.add_argument(
-        "--max-pairs-per-type",
-        type=int,
-        default=250000,
-        help="Cap generated positive pairs per pair type (0 = no cap)",
-    )
-    parser.add_argument("--device", default="", help="cuda, cpu, or empty for auto")
-    parser.add_argument(
-        "--pair-types",
-        nargs="+",
-        choices=list(PAIR_BUILDERS.keys()),
-        default=list(PAIR_BUILDERS.keys()),
-        help="Subset of pair types to benchmark",
-    )
+    parser.add_argument("--max-pairs-per-type", type=int, default=250000)
+    parser.add_argument("--device", default="", help="cuda, cpu, ou vide pour auto")
+    parser.add_argument("--pair-types", nargs="+",
+                        choices=list(PAIR_BUILDERS.keys()),
+                        default=list(PAIR_BUILDERS.keys()))
     args = parser.parse_args()
-
-    _ensure_deps()
 
     run_benchmark(
         db_path=Path(args.db_path),
-        embeddings_npy=Path(args.embeddings_npy),
-        embeddings_ids_npy=Path(args.embeddings_ids_npy),
+        emb_path=Path(args.embeddings_npy),
+        ids_path=Path(args.embeddings_ids_npy),
         out_dir=Path(args.out_dir),
         pool_sizes=args.pool_sizes,
         n_runs=args.n_runs,
