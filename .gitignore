@@ -33,9 +33,6 @@ diagnostic_test.py
 
 # REFuSe artifacts
 refuse_benchmark.db
-refuse_data.zip
-REFUSE_PIPELINE.md
-RUN_REFUSE_BENCHMARK_FRIEND.md
 results/refuse_embeddings.npy
 results/refuse_embeddings.ids.npy
 results/refuse_smoke/
