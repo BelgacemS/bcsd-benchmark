@@ -21,10 +21,22 @@ compile_all.sh
 
 nohup.out
 sujet-04.pdf
-<<<<<<< HEAD
 docs/rosetta_scraper_guide.tex
 data/output
 sujet-04 .pdf
 data/atcoder/
-=======
->>>>>>> 10fbc437b57bf11e94fe16b1c8f74240ac4d15a7
+
+# local / generated artifacts
+.cache/
+binaries/
+diagnostic_test.py
+
+# REFuSe artifacts
+refuse_benchmark.db
+refuse_data.zip
+REFUSE_PIPELINE.md
+RUN_REFUSE_BENCHMARK_FRIEND.md
+results/refuse_embeddings.npy
+results/refuse_embeddings.ids.npy
+results/refuse_smoke/
+results/refuse_smoke_cross/
