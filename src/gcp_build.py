@@ -221,6 +221,7 @@ def upload_scripts(zone, config_path, dry_run, phases):
 
     if "disasm" in phases:
         scp_up(os.path.join(SRC_DIR, "disasm.py"), "/workspace/disasm.py", zone, dry_run)
+        scp_up(os.path.join(SRC_DIR, "disasm_jtrans.py"), "/workspace/disasm_jtrans.py", zone, dry_run)
         scp_up(os.path.join(SCRIPTS_DIR, "launch_disasm.sh"), "/workspace/launch_disasm.sh", zone, dry_run)
         ssh(zone, "chmod +x /workspace/launch_disasm.sh", dry_run, fatal=False)
 
@@ -228,6 +229,7 @@ def upload_scripts(zone, config_path, dry_run, phases):
         scp_up(os.path.join(SRC_DIR, "embed_palmtree.py"), "/workspace/embed_palmtree.py", zone, dry_run)
         scp_up(os.path.join(SRC_DIR, "embed_baseline.py"), "/workspace/embed_baseline.py", zone, dry_run)
         scp_up(os.path.join(SRC_DIR, "embed_refuse.py"), "/workspace/embed_refuse.py", zone, dry_run)
+        scp_up(os.path.join(SRC_DIR, "embed_jtrans.py"), "/workspace/embed_jtrans.py", zone, dry_run)
 
     if "benchmark" in phases:
         scp_up(os.path.join(SRC_DIR, "benchmark.py"), "/workspace/benchmark.py", zone, dry_run)
@@ -319,6 +321,14 @@ def phase_disasm(zone, bucket, dry_run, parallel, skip_compile):
     print(f"\n[PUSH] disasm vers {bucket}/disasm/")
     ssh(zone, f"gsutil -m rsync -r /workspace/data/disasm/ {bucket}/disasm/", dry_run)
 
+    # disasm BB-level pour jTrans (scan les binaires, multiprocess)
+    print("\n[DISASM] jTrans (BB-level)")
+    ssh(zone,
+        "cd /workspace && python3 disasm_jtrans.py --config config.yaml",
+        dry_run)
+    print(f"\n[PUSH] disasm_jtrans vers {bucket}/disasm_jtrans/")
+    ssh(zone, f"gsutil -m rsync -r /workspace/data/disasm_jtrans/ {bucket}/disasm_jtrans/", dry_run)
+
 
 def phase_embed(zone, bucket, dry_run):
     # pull des disasm depuis le bucket
@@ -349,6 +359,22 @@ def phase_embed(zone, bucket, dry_run):
     print("\n[EMBED] baseline")
     ssh(zone,
         "cd /workspace && python3 embed_baseline.py --config config.yaml",
+        dry_run)
+
+    # jTrans : install transformers + pull modele + disasm_jtrans + lancement
+    print("\n[EMBED] jTrans")
+    ssh(zone,
+        "pip3 install transformers --break-system-packages -q",
+        dry_run)
+    ssh(zone,
+        f"gsutil -m rsync -r {bucket}/models/jtrans/ /workspace/lib/jtrans/",
+        dry_run)
+    # pull les disasm_jtrans depuis le bucket (generes en phase disasm)
+    ssh(zone,
+        f"gsutil -m rsync -r {bucket}/disasm_jtrans/ /workspace/data/disasm_jtrans/",
+        dry_run)
+    ssh(zone,
+        "cd /workspace && python3 embed_jtrans.py --config config.yaml",
         dry_run)
 
     # REFuSE : install deps JAX + pull du modele + lancement

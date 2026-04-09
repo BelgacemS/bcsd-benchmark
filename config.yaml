@@ -41,6 +41,10 @@ pipeline:
       palmtree:
         enabled: true
         type: "instruction_embedding"
+      jtrans:
+        enabled: true
+        type: "instruction_embedding"
+        model_dir: "lib/jtrans/models/jTrans-finetune"
       refuse:
         enabled: true
         type: "raw_bytes"
@@ -81,6 +85,7 @@ paths:
   sources: "data/sources"
   binaries: "data/binaries"
   disasm: "data/disasm"
+  disasm_jtrans: "data/disasm_jtrans"
   embeddings: "data/embeddings"
   results: "results"
   test_sources: "data/sources/_test"

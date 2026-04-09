@@ -12,12 +12,15 @@ from tqdm import tqdm
 import yaml
 
 
-ARITH = {"add", "sub", "imul", "idiv", "mul", "div", "inc", "dec", "neg", "lea"}
-TRANSFER = {"mov", "push", "pop", "lea", "xchg"}
-CONTROL = {"jmp", "je", "jne", "jg", "jl", "jge", "jle", "ja", "jb",
-           "call", "ret", "jnz", "jz", "js", "jns", "jbe", "jae"}
+# categories disjointes pour eviter le double comptage
+ARITH = {"add", "sub", "imul", "idiv", "mul", "div", "inc", "dec", "neg", "adc", "sbb"}
+LOGIC = {"and", "or", "xor", "not"}
+SHIFT = {"shl", "shr", "sar", "sal", "rol", "ror", "rcl", "rcr"}
+TRANSFER = {"mov", "lea", "xchg", "movzx", "movsx", "movsxd"}
 CMP = {"cmp", "test"}
 STACK = {"push", "pop"}
+COND_JUMP = {"je", "jne", "jg", "jl", "jge", "jle", "ja", "jb",
+             "jnz", "jz", "js", "jns", "jbe", "jae", "jo", "jno", "jp", "jnp"}
 
 
 def load_config(path="config.yaml"):
@@ -26,7 +29,7 @@ def load_config(path="config.yaml"):
 
 
 def extract_features(insns):
-    # 16 features par fonction
+    # 16 features par fonction, categories disjointes, pas de ratios redondants
     nb = len(insns)
     if nb == 0:
         return np.zeros(16)
@@ -35,12 +38,17 @@ def extract_features(insns):
     operands = [o for _, o in insns]
 
     nb_arith = sum(1 for m in mnemonics if m in ARITH)
+    nb_logic = sum(1 for m in mnemonics if m in LOGIC)
+    nb_shift = sum(1 for m in mnemonics if m in SHIFT)
     nb_transfer = sum(1 for m in mnemonics if m in TRANSFER)
-    nb_control = sum(1 for m in mnemonics if m in CONTROL)
     nb_cmp = sum(1 for m in mnemonics if m in CMP)
     nb_stack = sum(1 for m in mnemonics if m in STACK)
     nb_call = sum(1 for m in mnemonics if m == "call")
     nb_ret = sum(1 for m in mnemonics if m == "ret")
+    nb_cond = sum(1 for m in mnemonics if m in COND_JUMP)
+    nb_uncond = sum(1 for m in mnemonics if m == "jmp")
+    # cmov* apparait a O2+ quand le compilateur elimine des branches
+    nb_cmov = sum(1 for m in mnemonics if m.startswith("cmov"))
 
     unique_ops = len(set(mnemonics))
 
@@ -50,14 +58,13 @@ def extract_features(insns):
     for op in operands:
         if not op:
             continue
-        # on compte par operande (split sur virgule)
         for part in op.split(","):
             part = part.strip()
             if not part:
                 continue
             if "[" in part:
                 nb_mem += 1
-            elif part.startswith("0x") or part.isdigit():
+            elif part.lstrip("-").startswith("0x") or part.lstrip("-").isdigit():
                 nb_imm += 1
             elif any(r in part for r in ["ax", "bx", "cx", "dx", "si", "di",
                                          "sp", "bp", "ip", "r8", "r9", "r1",
@@ -65,22 +72,22 @@ def extract_features(insns):
                 nb_reg += 1
 
     return np.array([
-        nb,
-        nb_arith,
-        nb_transfer,
-        nb_control,
-        nb_cmp,
-        nb_stack,
-        nb_call,
-        nb_ret,
-        nb_arith / nb,
-        nb_transfer / nb,
-        nb_control / nb,
-        nb_cmp / nb,
-        unique_ops,
-        nb_reg,
-        nb_mem,
-        nb_imm,
+        nb,             # taille de la fonction
+        nb_arith,       # arithmetique (sans lea)
+        nb_transfer,    # transfert (avec lea/movzx, sans push/pop)
+        nb_cmp,         # comparaisons
+        nb_logic,       # and/or/xor/not
+        nb_shift,       # shl/shr/sar/etc
+        nb_stack,       # push/pop (disjoint de transfer)
+        nb_call,        # appels
+        nb_ret,         # retours
+        nb_cond,        # sauts conditionnels (structurel)
+        nb_uncond,      # jmp seul
+        nb_cmov,        # moves conditionnels (marqueur d'optim)
+        unique_ops,     # diversite d'opcodes
+        nb_reg,         # operandes registre
+        nb_mem,         # operandes memoire
+        nb_imm,         # operandes immediat
     ], dtype=np.float32)
 
 

@@ -14,6 +14,7 @@ data/sources/
 !data/sources/_test/
 data/binaries/
 data/disasm/
+data/disasm_jtrans/
 data/embeddings/
 data/compile_manifest.json
 *.o
@@ -25,6 +26,9 @@ docs/rosetta_scraper_guide.tex
 data/output
 sujet-04 .pdf
 data/atcoder/
+
+# modeles trop gros pour git (stockes sur GCP bucket)
+lib/jtrans/models/
 
 # artefacts locaux
 .cache/
