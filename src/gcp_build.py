@@ -227,6 +227,7 @@ def upload_scripts(zone, config_path, dry_run, phases):
     if "embed" in phases:
         scp_up(os.path.join(SRC_DIR, "embed_palmtree.py"), "/workspace/embed_palmtree.py", zone, dry_run)
         scp_up(os.path.join(SRC_DIR, "embed_baseline.py"), "/workspace/embed_baseline.py", zone, dry_run)
+        scp_up(os.path.join(SRC_DIR, "embed_refuse.py"), "/workspace/embed_refuse.py", zone, dry_run)
 
     if "benchmark" in phases:
         scp_up(os.path.join(SRC_DIR, "benchmark.py"), "/workspace/benchmark.py", zone, dry_run)
@@ -325,10 +326,14 @@ def phase_embed(zone, bucket, dry_run):
     ssh(zone, "mkdir -p /workspace/data", dry_run, fatal=False)
     ssh(zone, f"gsutil -m rsync -r {bucket}/disasm/ /workspace/data/disasm/", dry_run)
 
+    # pull des binaires (necessaire pour REFuSE qui extrait les raw bytes)
+    print(f"\n[PULL] binaires depuis {bucket}/binaries/")
+    ssh(zone, f"gsutil -m rsync -r {bucket}/binaries/ /workspace/data/binaries/", dry_run)
+
     # upload du modele PalmTree depuis le bucket (plus rapide que SCP)
     print("\n[PULL] modele PalmTree")
     ssh(zone, "mkdir -p /workspace/lib", dry_run, fatal=False)
-    ssh(zone, f"gsutil -m rsync -r {bucket}/palmtree/ /workspace/lib/palmtree/", dry_run)
+    ssh(zone, f"gsutil -m rsync -r {bucket}/models/palmtree/ /workspace/lib/palmtree/", dry_run)
 
     # pip install torch si pas deja fait
     ssh(zone, "pip3 install torch --break-system-packages -q", dry_run)
@@ -344,6 +349,19 @@ def phase_embed(zone, bucket, dry_run):
     print("\n[EMBED] baseline")
     ssh(zone,
         "cd /workspace && python3 embed_baseline.py --config config.yaml",
+        dry_run)
+
+    # REFuSE : install deps JAX + pull du modele + lancement
+    print("\n[EMBED] REFuSE")
+    ssh(zone,
+        "pip3 install jax jaxlib flax optax pyelftools --break-system-packages -q",
+        dry_run)
+    ssh(zone, "mkdir -p /workspace/.cache", dry_run, fatal=False)
+    ssh(zone,
+        f"gsutil -m rsync -r {bucket}/models/refuse/ /workspace/.cache/refuse_repo/",
+        dry_run)
+    ssh(zone,
+        "cd /workspace && python3 embed_refuse.py --config config.yaml",
         dry_run)
 
     # push embeddings
