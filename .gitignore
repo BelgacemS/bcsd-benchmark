@@ -26,14 +26,6 @@ data/output
 sujet-04 .pdf
 data/atcoder/
 
-# local / generated artifacts
+# artefacts locaux
 .cache/
-binaries/
 diagnostic_test.py
-
-# REFuSe artifacts
-refuse_benchmark.db
-results/refuse_embeddings.npy
-results/refuse_embeddings.ids.npy
-results/refuse_smoke/
-results/refuse_smoke_cross/
