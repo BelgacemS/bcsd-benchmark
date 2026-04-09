@@ -47,8 +47,8 @@ pipeline:
         trim_length: 250
         embedding_dim: 128
         batch_size: 512
-        repo_root: ".cache/refuse_repo"
-        checkpoint: ".cache/refuse_repo/model-training/checkpoints/refuse_checkpoint_1/checkpoint"
+        repo_root: "lib/refuse"
+        checkpoint: "lib/refuse/model-training/checkpoints/refuse_checkpoint_1/checkpoint"
 
   benchmark:
     metrics: ["recall_at_1", "precision_at_1", "precision_at_5", "mrr", "roc_auc"]

@@ -356,9 +356,9 @@ def phase_embed(zone, bucket, dry_run):
     ssh(zone,
         "pip3 install jax jaxlib flax optax pyelftools --break-system-packages -q",
         dry_run)
-    ssh(zone, "mkdir -p /workspace/.cache", dry_run, fatal=False)
+    ssh(zone, "mkdir -p /workspace/lib", dry_run, fatal=False)
     ssh(zone,
-        f"gsutil -m rsync -r {bucket}/models/refuse/ /workspace/.cache/refuse_repo/",
+        f"gsutil -m rsync -r {bucket}/models/refuse/ /workspace/lib/refuse/",
         dry_run)
     ssh(zone,
         "cd /workspace && python3 embed_refuse.py --config config.yaml",

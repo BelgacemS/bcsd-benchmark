@@ -83,7 +83,7 @@ def load_refuse(repo_root, ckpt_path, trim_len, emb_dim):
     refuse_dir = repo_root / "model-evaluation" / "refuse"
     if not refuse_dir.exists():
         print(f"Erreur: {refuse_dir} introuvable")
-        print("Clone le repo REFuSE dans .cache/refuse_repo/")
+        print("Clone le repo REFuSE dans lib/refuse/")
         sys.exit(1)
 
     sys.path.insert(0, str(refuse_dir))
@@ -135,9 +135,9 @@ def run_refuse(cfg, disasm_dir, bin_dir, emb_base):
     emb_dim = refuse_cfg.get("embedding_dim", 128)
     batch_sz = refuse_cfg.get("batch_size", 512)
     # chemins relatifs au CWD (comme disasm_dir, emb_base dans le main)
-    repo_root = Path(refuse_cfg.get("repo_root", ".cache/refuse_repo"))
+    repo_root = Path(refuse_cfg.get("repo_root", "lib/refuse"))
     ckpt = Path(refuse_cfg.get("checkpoint",
-        ".cache/refuse_repo/model-training/checkpoints/refuse_checkpoint_1/checkpoint"))
+        "lib/refuse/model-training/checkpoints/refuse_checkpoint_1/checkpoint"))
 
     json_files = sorted(disasm_dir.rglob("*.json"))
     if not json_files:
