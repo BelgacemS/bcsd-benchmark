@@ -41,12 +41,20 @@ pipeline:
       palmtree:
         enabled: true
         type: "instruction_embedding"
+      refuse:
+        enabled: true
+        type: "raw_bytes"
+        trim_length: 250
+        embedding_dim: 128
+        batch_size: 512
+        repo_root: ".cache/refuse_repo"
+        checkpoint: ".cache/refuse_repo/model-training/checkpoints/refuse_checkpoint_1/checkpoint"
 
   benchmark:
     metrics: ["recall_at_1", "precision_at_1", "precision_at_5", "mrr", "roc_auc"]
     pool_sizes: [100, 1000, 10000]
     neg_ratio: 5
-    n_runs: 10
+    n_runs: 1000
     seed: 42
     pair_types:
       cross_compiler: true
