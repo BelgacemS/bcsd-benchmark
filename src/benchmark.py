@@ -182,71 +182,67 @@ PAIR_BUILDERS = {
 }
 
 
-def run_pool_experiment_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries=5000):
-    # on sample les paires si y'en a trop
-    if len(pairs) > max_queries:
-        sample_idx = rng.choice(len(pairs), size=max_queries, replace=False)
-        sampled = [pairs[i] for i in sample_idx]
-    else:
-        sampled = pairs
-
-    # on precalcule les indices et les problemes pour les distracteurs
-    all_indices = list(range(matrix.shape[0]))
-
-    # index inverse : idx -> problem
-    idx_to_prob = {}
+def build_prob_pools(index, key_to_idx, approach, n_total):
+    # precalcule pour chaque probleme les indices des AUTRES problemes
+    # elimine la boucle Python de filtrage dans l'experience
+    idx_to_prob = np.empty(n_total, dtype=object)
+    idx_to_prob[:] = ""
     for func_key, entry in index.items():
         prob = entry.get("problem", "")
         for ck in entry.get("embeddings", {}).get(approach, {}):
             if (func_key, ck) in key_to_idx:
                 idx_to_prob[key_to_idx[(func_key, ck)]] = prob
 
+    prob_pools = {}
+    for prob in set(idx_to_prob):
+        if prob:
+            prob_pools[prob] = np.where(idx_to_prob != prob)[0]
+        else:
+            prob_pools[prob] = np.arange(n_total)
+    return idx_to_prob, prob_pools
+
+
+def run_pool_experiment_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries=5000, prob_pools=None, idx_to_prob=None):
+    if len(pairs) > max_queries:
+        sample_idx = rng.choice(len(pairs), size=max_queries, replace=False)
+        sampled = [pairs[i] for i in sample_idx]
+    else:
+        sampled = pairs
+
+    n_total = matrix.shape[0]
+    nb_distract = min(pool_sz - 1, n_total - 2)
+    if nb_distract < 1:
+        return [], [], []
+
+    # resolve les paires en indices
+    valid = []
+    for q_key, q_ck, p_key, p_ck in sampled:
+        qi = key_to_idx.get((q_key, q_ck))
+        pi = key_to_idx.get((p_key, p_ck))
+        if qi is not None and pi is not None:
+            valid.append((qi, pi, str(idx_to_prob[qi])))
+
+    if not valid:
+        return [], [], []
+
     ranks = []
     pos_sims = []
     neg_sims_all = []
 
-    for q_key, q_ck, p_key, p_ck in sampled:
-        q_idx = key_to_idx.get((q_key, q_ck))
-        p_idx = key_to_idx.get((p_key, p_ck))
-        if q_idx is None or p_idx is None:
+    for qi, pi, q_prob in valid:
+        # pool precalcule, juste exclure qi et pi
+        pool = prob_pools.get(q_prob, np.arange(n_total))
+        pool = pool[(pool != qi) & (pool != pi)]
+
+        actual = min(nb_distract, len(pool))
+        if actual < 1:
             continue
+        d_idxs = rng.choice(pool, size=actual, replace=False)
 
-        q_prob = idx_to_prob.get(q_idx, "")
-
-        # distracteurs : problems differents, rapide avec numpy
-        nb_distract = min(pool_sz - 1, len(all_indices) - 2)
-        if nb_distract < 1:
-            continue
-
-        # on sample des indices au hasard et on filtre
-        candidates = rng.choice(len(all_indices), size=min(nb_distract * 3, len(all_indices)), replace=False)
-        distract_idxs = []
-        for ci in candidates:
-            if ci == q_idx or ci == p_idx:
-                continue
-            if idx_to_prob.get(ci, "") == q_prob and q_prob:
-                continue
-            distract_idxs.append(ci)
-            if len(distract_idxs) >= nb_distract:
-                break
-
-        # fallback si pas assez
-        if len(distract_idxs) < nb_distract:
-            for ci in candidates:
-                if ci == q_idx or ci == p_idx:
-                    continue
-                if ci not in distract_idxs:
-                    distract_idxs.append(ci)
-                    if len(distract_idxs) >= nb_distract:
-                        break
-
-        if not distract_idxs:
-            continue
-
-        # similarite cosinus vectorisee (matrice normalisee, dot = cosine sim)
-        q_vec = matrix[q_idx]
-        p_sim = float(np.dot(q_vec, matrix[p_idx]))
-        d_sims = np.dot(matrix[np.array(distract_idxs)], q_vec)
+        # similarite cosinus (matrice deja normalisee)
+        q_vec = matrix[qi]
+        p_sim = float(np.dot(q_vec, matrix[pi]))
+        d_sims = matrix[d_idxs] @ q_vec
 
         rank = 1 + int(np.sum(d_sims >= p_sim))
         ranks.append(rank)
@@ -257,7 +253,7 @@ def run_pool_experiment_fast(matrix, key_to_idx, index, approach, pairs, pool_sz
     return ranks, pos_sims, neg_sims_all
 
 
-def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, seed, n_runs, max_queries=5000):
+def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, seed, n_runs, max_queries=5000, prob_pools=None, idx_to_prob=None):
     all_r1 = []
     all_mrr = []
     all_auc = []
@@ -267,7 +263,8 @@ def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, see
     for run in range(n_runs):
         rng = np.random.RandomState(seed + run)
         ranks, pos_s, neg_s = run_pool_experiment_fast(
-            matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries
+            matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries,
+            prob_pools=prob_pools, idx_to_prob=idx_to_prob
         )
         if not ranks:
             continue
@@ -477,6 +474,12 @@ def run_benchmark(approach, index, cfg, results_dir, matrix, key_to_idx):
     out_dir = results_dir / approach
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # precalcul des pools de distracteurs par probleme (une seule fois)
+    n_total = matrix.shape[0]
+    print(f"  precalcul pools distracteurs...", end=" ", flush=True)
+    idx_to_prob, prob_pools = build_prob_pools(index, key_to_idx, approach, n_total)
+    print(f"{len(prob_pools)} problemes")
+
     results = {}
     all_pos = []
     all_neg = []
@@ -506,7 +509,8 @@ def run_benchmark(approach, index, cfg, results_dir, matrix, key_to_idx):
         for pool_sz in pool_sizes:
             metrics, pos_s, neg_s = run_multi_pool_fast(
                 matrix, key_to_idx, index, approach, pairs,
-                pool_sz, seed, n_runs, max_queries
+                pool_sz, seed, n_runs, max_queries,
+                prob_pools=prob_pools, idx_to_prob=idx_to_prob
             )
             pk = f"pool_{pool_sz}"
             pt_res["pools"][pk] = metrics
