@@ -254,8 +254,8 @@ def run_approach(approach, encoder_fn, cfg, disasm_dir, emb_base):
     return True
 
 
-def run_palmtree(cfg, disasm_dir, emb_base):
-    model_path = PALMTREE_DIR / "pre-trained_model" / "palmtree" / "transformer.ep19"
+def run_palmtree(cfg, disasm_dir, emb_base, model_override=None, approach="palmtree"):
+    model_path = Path(model_override) if model_override else PALMTREE_DIR / "pre-trained_model" / "palmtree" / "transformer.ep19"
     vocab_path = PALMTREE_DIR / "pre-trained_model" / "palmtree" / "vocab"
 
     if not model_path.exists():
@@ -267,7 +267,7 @@ def run_palmtree(cfg, disasm_dir, emb_base):
     def encode_file(jf):
         return process_disasm_file(jf, encoder)
 
-    return run_approach("palmtree", encode_file, cfg, disasm_dir, emb_base)
+    return run_approach(approach, encode_file, cfg, disasm_dir, emb_base)
 
 
 if __name__ == "__main__":
@@ -276,10 +276,13 @@ if __name__ == "__main__":
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto",
                         help="forcer cpu ou cuda (defaut: auto)")
+    parser.add_argument("--model-path", default=None,
+                        help="chemin vers un modele fine-tune (defaut: pre-entraine)")
+    parser.add_argument("--approach", default="palmtree",
+                        help="nom de l'approche dans l'index (defaut: palmtree)")
     args = parser.parse_args()
 
     # re-detection du device si specifie en CLI
-    global DEVICE
     DEVICE = detect_device(args.device)
 
     cfg = load_config(args.config)
@@ -294,8 +297,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     approaches = pipeline["similarity"]["approaches"]
-    if not approaches.get("palmtree", {}).get("enabled"):
+    if args.model_path is None and not approaches.get("palmtree", {}).get("enabled"):
         print("PalmTree pas active dans config.yaml")
         sys.exit(0)
 
-    run_palmtree(cfg, disasm_dir, emb_base)
+    run_palmtree(cfg, disasm_dir, emb_base,
+                 model_override=args.model_path, approach=args.approach)
