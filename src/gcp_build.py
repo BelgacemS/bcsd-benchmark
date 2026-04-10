@@ -185,7 +185,7 @@ def setup_base(zone, dry_run):
         "sudo apt-get install -y -qq gcc g++ clang python3-pip",
         dry_run)
     ssh(zone,
-        "pip3 install pyyaml tqdm --break-system-packages -q",
+        "pip3 install pyyaml tqdm -q",
         dry_run)
     ssh(zone,
         "sudo mkdir -p /workspace && sudo chown $(whoami) /workspace",
@@ -194,7 +194,7 @@ def setup_base(zone, dry_run):
 
 def setup_angr(zone, dry_run):
     print("[SETUP] installation angr")
-    ssh(zone, "pip3 install angr --break-system-packages -q", dry_run)
+    ssh(zone, "pip3 install angr -q", dry_run)
 
 
 def setup_gpu(zone, dry_run):
@@ -202,10 +202,12 @@ def setup_gpu(zone, dry_run):
     print("[SETUP] installation drivers CUDA + PyTorch")
     ssh(zone,
         "sudo apt-get install -y -qq linux-headers-$(uname -r) && "
-        "sudo apt-get install -y -qq nvidia-driver-535",
+        "sudo apt-get install -y -qq nvidia-driver-550",
         dry_run)
+    # recharger le module nvidia apres install
+    ssh(zone, "sudo modprobe nvidia", dry_run, fatal=False)
     ssh(zone,
-        "pip3 install torch torchvision --break-system-packages -q",
+        "pip3 install torch torchvision -q",
         dry_run)
 
 
@@ -237,7 +239,7 @@ def upload_scripts(zone, config_path, dry_run, phases):
 
 def pull_sources(zone, bucket, gcp_src, dry_run):
     print(f"\n[PULL] sources depuis {bucket}/{gcp_src}/")
-    ssh(zone, "mkdir -p /workspace/data", dry_run, fatal=False)
+    ssh(zone, "mkdir -p /workspace/data/sources", dry_run, fatal=False)
     ssh(zone, f"gsutil -m rsync -r {bucket}/{gcp_src}/ /workspace/data/sources/", dry_run)
     ssh(zone,
         "echo -n 'Fichiers source: ' && "
@@ -288,7 +290,7 @@ def phase_compile(zone, bucket, dry_run, parallel):
 def phase_disasm(zone, bucket, dry_run, parallel, skip_compile):
     if skip_compile:
         print(f"\n[PULL] binaires depuis {bucket}/binaries/")
-        ssh(zone, "mkdir -p /workspace/data", dry_run, fatal=False)
+        ssh(zone, "mkdir -p /workspace/data/binaries /workspace/data/disasm", dry_run, fatal=False)
         ssh(zone, f"gsutil -m rsync -r {bucket}/binaries/ /workspace/data/binaries/", dry_run)
         ssh(zone, f"gsutil cp {bucket}/compile_manifest.json /workspace/compile_manifest.json", dry_run)
 
@@ -333,7 +335,7 @@ def phase_disasm(zone, bucket, dry_run, parallel, skip_compile):
 def phase_embed(zone, bucket, dry_run):
     # pull des disasm depuis le bucket
     print(f"\n[PULL] disasm depuis {bucket}/disasm/")
-    ssh(zone, "mkdir -p /workspace/data", dry_run, fatal=False)
+    ssh(zone, "mkdir -p /workspace/data/disasm /workspace/data/binaries /workspace/data/disasm_jtrans /workspace/data/embeddings", dry_run, fatal=False)
     ssh(zone, f"gsutil -m rsync -r {bucket}/disasm/ /workspace/data/disasm/", dry_run)
 
     # pull des binaires (necessaire pour REFuSE qui extrait les raw bytes)
@@ -342,11 +344,11 @@ def phase_embed(zone, bucket, dry_run):
 
     # upload du modele PalmTree depuis le bucket (plus rapide que SCP)
     print("\n[PULL] modele PalmTree")
-    ssh(zone, "mkdir -p /workspace/lib", dry_run, fatal=False)
+    ssh(zone, "mkdir -p /workspace/lib/palmtree /workspace/lib/jtrans /workspace/lib/refuse", dry_run, fatal=False)
     ssh(zone, f"gsutil -m rsync -r {bucket}/models/palmtree/ /workspace/lib/palmtree/", dry_run)
 
     # pip install torch si pas deja fait
-    ssh(zone, "pip3 install torch --break-system-packages -q", dry_run)
+    ssh(zone, "pip3 install torch -q", dry_run)
 
     # lancement des embeddings PalmTree
     print("\n[EMBED] PalmTree")
@@ -364,7 +366,7 @@ def phase_embed(zone, bucket, dry_run):
     # jTrans : install transformers + pull modele + disasm_jtrans + lancement
     print("\n[EMBED] jTrans")
     ssh(zone,
-        "pip3 install transformers --break-system-packages -q",
+        "pip3 install transformers -q",
         dry_run)
     ssh(zone,
         f"gsutil -m rsync -r {bucket}/models/jtrans/ /workspace/lib/jtrans/",
@@ -380,7 +382,7 @@ def phase_embed(zone, bucket, dry_run):
     # REFuSE : install deps JAX + pull du modele + lancement
     print("\n[EMBED] REFuSE")
     ssh(zone,
-        "pip3 install jax jaxlib flax optax pyelftools --break-system-packages -q",
+        "pip3 install jax jaxlib flax optax pyelftools -q",
         dry_run)
     ssh(zone, "mkdir -p /workspace/lib", dry_run, fatal=False)
     ssh(zone,
@@ -398,12 +400,12 @@ def phase_embed(zone, bucket, dry_run):
 def phase_benchmark(zone, bucket, dry_run):
     # pull des embeddings
     print(f"\n[PULL] embeddings depuis {bucket}/embeddings/")
-    ssh(zone, "mkdir -p /workspace/data", dry_run, fatal=False)
+    ssh(zone, "mkdir -p /workspace/data/embeddings", dry_run, fatal=False)
     ssh(zone, f"gsutil -m rsync -r {bucket}/embeddings/ /workspace/data/embeddings/", dry_run)
 
     # pip install sklearn, matplotlib, seaborn
     ssh(zone,
-        "pip3 install scikit-learn matplotlib seaborn --break-system-packages -q",
+        "pip3 install scikit-learn matplotlib seaborn -q",
         dry_run)
 
     print("\n[BENCHMARK] lancement")

@@ -18,6 +18,9 @@ import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 JTRANS_DIR = ROOT / "lib" / "jtrans"
+if not JTRANS_DIR.exists():
+    ROOT = Path(__file__).resolve().parent
+    JTRANS_DIR = ROOT / "lib" / "jtrans"
 
 MAXLEN = 512
 
