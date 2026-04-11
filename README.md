@@ -3,11 +3,11 @@
 ---
 
 <p align="center">
-<b>Evaluation des modeles de similarite binaire au-dela de la cross-compilation</b>
+<b>Évaluation des modèles de similarité binaire au-delà de la cross-compilation</b>
 </p>
 
 <p align="center">
-<i>Un benchmark multi-niveaux pour la detection de similarite de code binaire : cross-compilation, cross-implementation et cross-langage.</i>
+<i>Un benchmark multi-niveaux pour la détection de similarité de code binaire : cross-compilation, cross-implémentation et cross-langage.</i>
 </p>
 
 <p align="center">
@@ -19,23 +19,23 @@
 
 ## Contexte
 
-Les modeles de Binary Code Similarity Detection (BCSD) sont generalement evalues sur un seul scenario : retrouver une meme fonction compilee avec des compilateurs ou niveaux d'optimisation differents. Ce cadre ne permet pas de determiner si les modeles capturent reellement la semantique du code binaire, ou s'ils exploitent des patterns syntaxiques preserves entre compilations.
+Les modèles de Binary Code Similarity Detection (BCSD) sont généralement évalués sur un seul scénario : retrouver une même fonction compilée avec des compilateurs ou niveaux d'optimisation différents. Ce cadre ne permet pas de déterminer si les modèles capturent réellement la sémantique du code binaire, ou s'ils exploitent des patterns syntaxiques préservés entre compilations.
 
-Ce projet propose un benchmark qui evalue les approches BCSD a trois niveaux de difficulte croissante : cross-compilation (meme source, compilateur ou optimisation differente), cross-implementation (meme algorithme, implementations independantes dans le meme langage) et cross-langage (meme algorithme, langages sources differents). Le dataset est construit a partir de plateformes de programmation competitive (RosettaCode, LeetCode, AtCoder), qui fournissent naturellement plusieurs solutions independantes aux memes problemes algorithmiques. Cinq approches sont comparees : une baseline statistique, PalmTree (pre-entraine et fine-tune), jTrans et REFuSE.
+Ce projet propose un benchmark qui évalue les approches BCSD à trois niveaux de difficulté croissante : cross-compilation (même source, compilateur ou optimisation différente), cross-implémentation (même algorithme, implémentations indépendantes dans le même langage) et cross-langage (même algorithme, langages sources différents). Le dataset est construit à partir de plateformes de programmation compétitive (RosettaCode, LeetCode, AtCoder), qui fournissent naturellement plusieurs solutions indépendantes aux mêmes problèmes algorithmiques. Cinq approches sont comparées : une baseline statistique, PalmTree (pré-entraîné et fine-tuné), jTrans et REFuSE.
 
-## Methode
+## Méthode
 
-Les fichiers sources en C et C++ sont compiles en executables ELF x86-64 avec GCC et Clang sur cinq niveaux d'optimisation (O0 a Os). Tous les binaires incluent les symboles de debug DWARF, qui permettent de distinguer les fonctions utilisateur du code de runtime (routines de demarrage, stubs PLT, code libc). Le desassemblage est effectue avec angr, et seules les fonctions depassant un seuil minimal d'instructions sont conservees.
+Les fichiers sources en C et C++ sont compilés en exécutables ELF x86-64 avec GCC et Clang sur cinq niveaux d'optimisation (O0 à Os). Tous les binaires incluent les symboles de debug DWARF, qui permettent de distinguer les fonctions utilisateur du code de runtime (routines de démarrage, stubs PLT, code libc). Le désassemblage est effectué avec angr, et seules les fonctions dépassant un seuil minimal d'instructions sont conservées.
 
-Chaque fonction est ensuite representee sous forme de vecteur par l'une des approches evaluees. PalmTree et jTrans operent sur les instructions assembleur tokenisees ; REFuSE traite directement les octets bruts de la fonction depuis l'ELF ; la baseline extrait 16 features statistiques (nombre d'instructions, ratios d'operandes registre/memoire, statistiques de flot de controle). PalmTree est egalement fine-tune avec un objectif d'apprentissage contrastif sur la partie entrainement du dataset.
+Chaque fonction est ensuite représentée sous forme de vecteur par l'une des approches évaluées. PalmTree et jTrans opèrent sur les instructions assembleur tokenisées ; REFuSE traite directement les octets bruts de la fonction depuis l'ELF ; la baseline extrait 16 features statistiques (nombre d'instructions, ratios d'opérandes registre/mémoire, statistiques de flot de contrôle). PalmTree est également fine-tuné avec un objectif d'apprentissage contrastif sur la partie entraînement du dataset.
 
-Le benchmark construit des paires de fonctions selon quatre niveaux de similarite (cross-compilateur, cross-optimisation, cross-implementation, cross-langage) et mesure les performances de recherche via Recall@1, MRR et ROC AUC. Chaque configuration est testee sur des pools de candidats de taille 100, 1 000 et 10 000, avec 1 000 runs independants par configuration.
+Le benchmark construit des paires de fonctions selon quatre niveaux de similarité (cross-compilateur, cross-optimisation, cross-implémentation, cross-langage) et mesure les performances de recherche via Recall@1, MRR et ROC AUC. Chaque configuration est testée sur des pools de candidats de taille 100, 1 000 et 10 000, avec 1 000 runs indépendants par configuration.
 
 ```mermaid
 flowchart LR
-    A["Sources\nC, C++"] --> B["Compilation\nGCC, Clang\nO0 a Os"]
+    A["Sources\nC, C++"] --> B["Compilation\nGCC, Clang\nO0 à Os"]
     B --> C["ELF x86-64\nsymboles DWARF"]
-    C --> D["Desassemblage\nangr"]
+    C --> D["Désassemblage\nangr"]
     D --> E["Embeddings\nPalmTree, jTrans\nREFuSE, Baseline"]
     E --> F["Benchmark\nRecall@1, MRR\nROC AUC"]
 ```
@@ -46,33 +46,33 @@ flowchart LR
 bcsd-benchmark/
 ├── src/                        # Scripts du pipeline
 │   ├── compile.py              # Compilation des sources en ELF
-│   ├── disasm.py               # Desassemblage avec angr
-│   ├── embed_palmtree.py       # Generation des embeddings PalmTree
-│   ├── embed_jtrans.py         # Generation des embeddings jTrans
+│   ├── disasm.py               # Désassemblage avec angr
+│   ├── embed_palmtree.py       # Génération des embeddings PalmTree
+│   ├── embed_jtrans.py         # Génération des embeddings jTrans
 │   ├── embed_baseline.py       # Extraction de features statistiques (16 features)
-│   ├── embed_refuse.py         # Generation des embeddings REFuSE (JAX/Flax)
+│   ├── embed_refuse.py         # Génération des embeddings REFuSE (JAX/Flax)
 │   ├── finetune_palmtree.py    # Fine-tuning contrastif de PalmTree
-│   ├── benchmark.py            # Evaluation et calcul des metriques
+│   ├── benchmark.py            # Évaluation et calcul des métriques
 │   ├── gcp_build.py            # Orchestration des VMs GCP
 │   └── scrapers/               # Scripts de collecte du dataset
-├── lib/                        # Code des modeles externes et poids pre-entraines
-│   ├── palmtree/               # Modele transformer PalmTree
-│   ├── jtrans/                 # Modele jTrans
-│   └── refuse/                 # Modele REFuSE (JAX/Flax)
-├── scripts/                    # Scripts shell de parallelisation pour GCP
-├── data/                       # Binaires, desassemblage, embeddings (hors VCS)
-├── results/                    # Sorties du benchmark, metriques et graphes
+├── lib/                        # Code des modèles externes et poids pré-entraînés
+│   ├── palmtree/               # Modèle transformer PalmTree
+│   ├── jtrans/                 # Modèle jTrans
+│   └── refuse/                 # Modèle REFuSE (JAX/Flax)
+├── scripts/                    # Scripts shell de parallélisation pour GCP
+├── data/                       # Binaires, désassemblage, embeddings (hors VCS)
+├── results/                    # Sorties du benchmark, métriques et graphes
 ├── config.yaml                 # Configuration du pipeline et du benchmark
-└── requirements.txt            # Dependances Python
+└── requirements.txt            # Dépendances Python
 ```
 
 ## Installation
 
-### Pre-requis
+### Prérequis
 
 - Python 3.10+
-- GCC et Clang (etape de compilation)
-- GPU compatible CUDA (optionnel, accelere la generation d'embeddings)
+- GCC et Clang (étape de compilation)
+- GPU compatible CUDA (optionnel, accélère la génération d'embeddings)
 
 ### Mise en place
 
@@ -85,9 +85,9 @@ pip install -r requirements.txt
 
 ### Configuration
 
-Tous les parametres du pipeline (compilateurs, niveaux d'optimisation, backend de desassemblage, approches d'embedding, metriques, tailles de pool) sont definis dans `config.yaml`.
+Tous les paramètres du pipeline (compilateurs, niveaux d'optimisation, backend de désassemblage, approches d'embedding, métriques, tailles de pool) sont définis dans `config.yaml`.
 
-Pour le deploiement sur GCP, le CLI `gcloud` doit etre authentifie avec acces au bucket `gs://bscd-database/`.
+Pour le déploiement sur GCP, le CLI `gcloud` doit être authentifié avec accès au bucket `gs://bscd-database/`.
 
 ## Utilisation
 
@@ -95,10 +95,10 @@ Pour le deploiement sur GCP, le CLI `gcloud` doit etre authentifie avec acces au
 
 ```bash
 python3 src/compile.py --test       # Compiler les sources de test en ELF
-python3 src/disasm.py --test        # Desassembler les binaires avec angr
-python3 src/embed_palmtree.py       # Generer les embeddings PalmTree
+python3 src/disasm.py --test        # Désassembler les binaires avec angr
+python3 src/embed_palmtree.py       # Générer les embeddings PalmTree
 python3 src/embed_baseline.py       # Calculer les vecteurs baseline
-python3 src/benchmark.py            # Lancer l'evaluation
+python3 src/benchmark.py            # Lancer l'évaluation
 ```
 
 ### Pipeline complet (GCP)
@@ -115,11 +115,11 @@ python3 src/gcp_build.py --phases benchmark
 python3 src/finetune_palmtree.py    # Fine-tuning contrastif de PalmTree
 ```
 
-## Donnees
+## Données
 
-Le dataset est construit a partir de trois plateformes de programmation competitive : RosettaCode, LeetCode et AtCoder. Il contient environ 28 000 fichiers sources en C et C++, couvrant pres de 6 000 problemes algorithmiques distincts. Chaque probleme possede typiquement plusieurs implementations independantes, ce qui rend possible l'evaluation cross-implementation et cross-langage.
+Le dataset est construit à partir de trois plateformes de programmation compétitive : RosettaCode, LeetCode et AtCoder. Il contient environ 28 000 fichiers sources en C et C++, couvrant près de 6 000 problèmes algorithmiques distincts. Chaque problème possède typiquement plusieurs implémentations indépendantes, ce qui rend possible l'évaluation cross-implémentation et cross-langage.
 
-Le repository inclut uniquement un petit echantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, desassemblage, embeddings) est heberge sur Google Cloud Storage :
+Le repository inclut uniquement un petit échantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, désassemblage, embeddings) est hébergé sur Google Cloud Storage :
 
 ```bash
 gsutil -m cp -r gs://bscd-database/sources/ data/sources/
@@ -127,9 +127,9 @@ gsutil -m cp -r gs://bscd-database/disasm/ data/disasm/
 gsutil -m cp -r gs://bscd-database/embeddings/ data/embeddings/
 ```
 
-## Resultats
+## Résultats
 
-Tous les resultats sont rapportes dans le cadre optimiste (noms de symboles DWARF disponibles pour le matching de fonctions), avec 1 000 runs independants par configuration et jusqu'a 5 000 queries par run. La variante fine-tunee de PalmTree est evaluee sur un split de test (2 695 fonctions) pour eviter le data leakage ; les autres approches utilisent l'ensemble complet (17 765 fonctions).
+Tous les résultats sont rapportés dans le cadre optimiste (noms de symboles DWARF disponibles pour le matching de fonctions), avec 1 000 runs indépendants par configuration et jusqu'à 5 000 queries par run. La variante fine-tunée de PalmTree est évaluée sur un split de test (2 695 fonctions) pour éviter le data leakage ; les autres approches utilisent l'ensemble complet (17 765 fonctions).
 
 ### Recall@1 (pool size = 100)
 
@@ -151,10 +151,10 @@ Tous les resultats sont rapportes dans le cadre optimiste (noms de symboles DWAR
 | jTrans        |          0.208 |       0.360 |      0.172 |      0.009 |
 | REFuSE        |          0.038 |       0.196 |      0.097 |      0.009 |
 
-Les performances se degradent de maniere consistante quand la taille du pool augmente de 100 a 10 000, conformement aux observations de Marcelli et al. (2022). Le fine-tuning apporte des gains importants sur les taches de cross-compilation mais ne se transfere pas au cadre cross-langage. La recherche cross-langage reste proche du niveau aleatoire pour toutes les approches evaluees, suggerant une limitation fondamentale des methodes d'embedding actuelles lorsque la structure du code source diverge.
+Les performances se dégradent de manière consistante quand la taille du pool augmente de 100 à 10 000, conformément aux observations de Marcelli et al. (2022). Le fine-tuning apporte des gains importants sur les tâches de cross-compilation mais ne se transfère pas au cadre cross-langage. La recherche cross-langage reste proche du niveau aléatoire pour toutes les approches évaluées, suggérant une limitation fondamentale des méthodes d'embedding actuelles lorsque la structure du code source diverge.
 
-Les metriques detaillees, distributions de similarite, courbes ROC et heatmaps cross-compilateur sont disponibles dans `results/{approach}/`.
+Les métriques détaillées, distributions de similarité, courbes ROC et heatmaps cross-compilateur sont disponibles dans `results/{approach}/`.
 
 ## Remerciements
 
-Ce travail a ete realise a Sorbonne Universite dans le cadre d'un projet de recherche du departement d'informatique. Nous remercions Nicolas Baskiotis et Benjamin Maudet pour leur encadrement tout au long de ce projet.
+Ce travail a été réalisé à Sorbonne Université dans le cadre d'un projet de recherche du département d'informatique. Nous remercions Nicolas Baskiotis et Benjamin Maudet pour leur encadrement tout au long de ce projet.
