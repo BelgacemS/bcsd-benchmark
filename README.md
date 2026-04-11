@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%3E%3D3.10-3776AB?logo=python&logoColor=white" alt="Python">
-<img src="https://img.shields.io/badge/PyTorch-%3E%3D2.4-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
-<img src="https://img.shields.io/badge/angr-%3E%3D9.2-555555" alt="angr">
+<img src="https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/PyTorch-2.4+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
+<img src="https://img.shields.io/badge/angr-9.2+-555555" alt="angr">
 <img src="https://img.shields.io/badge/status-recherche-6c757d" alt="Recherche">
 </p>
 
@@ -70,7 +70,7 @@ bcsd-benchmark/
 
 ### Pre-requis
 
-- Python >= 3.10
+- Python 3.10+
 - GCC et Clang (etape de compilation)
 - GPU compatible CUDA (optionnel, accelere la generation d'embeddings)
 
@@ -104,9 +104,9 @@ python3 src/benchmark.py            # Lancer l'evaluation
 ### Pipeline complet (GCP)
 
 ```bash
-python3 src/gcp_build.py --phases compile disasm   # VM CPU (96 coeurs)
-python3 src/gcp_build.py --phases embed             # VM GPU (NVIDIA T4)
-python3 src/gcp_build.py --phases benchmark          # VM CPU
+python3 src/gcp_build.py --phases compile disasm
+python3 src/gcp_build.py --phases embed
+python3 src/gcp_build.py --phases benchmark
 ```
 
 ### Fine-tuning
@@ -119,15 +119,13 @@ python3 src/finetune_palmtree.py    # Fine-tuning contrastif de PalmTree
 
 Le dataset est construit a partir de trois plateformes de programmation competitive : RosettaCode, LeetCode et AtCoder. Il contient environ 28 000 fichiers sources en C et C++, couvrant pres de 6 000 problemes algorithmiques distincts. Chaque probleme possede typiquement plusieurs implementations independantes, ce qui rend possible l'evaluation cross-implementation et cross-langage.
 
-Les fichiers sources, binaires compiles, sorties de desassemblage et embeddings pre-calcules sont heberges sur Google Cloud Storage :
+Le repository inclut uniquement un petit echantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, desassemblage, embeddings) est heberge sur Google Cloud Storage :
 
 ```bash
 gsutil -m cp -r gs://bscd-database/sources/ data/sources/
 gsutil -m cp -r gs://bscd-database/disasm/ data/disasm/
 gsutil -m cp -r gs://bscd-database/embeddings/ data/embeddings/
 ```
-
-Un petit echantillon de test est disponible dans `data/sources/_test/` pour le developpement local sans acces GCP.
 
 ## Resultats
 
@@ -157,23 +155,6 @@ Les performances se degradent de maniere consistante quand la taille du pool aug
 
 Les metriques detaillees, distributions de similarite, courbes ROC et heatmaps cross-compilateur sont disponibles dans `results/{approach}/`.
 
-## Citation
-
-```bibtex
-@misc{bcsd-benchmark-2025,
-  author       = {[YOUR NAME]},
-  title        = {{BCSD Benchmark} : \'Evaluation des mod\`eles de similarit\'e
-                  binaire au-del\`a de la cross-compilation},
-  year         = {2025},
-  institution  = {Sorbonne Universit\'{e}},
-  url          = {https://github.com/[YOUR_USERNAME]/bcsd-benchmark}
-}
-```
-
-## Licence
-
-Non encore specifiee. Un fichier `LICENSE` doit etre ajoute au repository.
-
 ## Remerciements
 
-Ce travail a ete realise a Sorbonne Universite dans le cadre d'un projet de recherche du departement d'informatique. Nous remercions [nom de l'encadrant] pour son encadrement tout au long de ce projet.
+Ce travail a ete realise a Sorbonne Universite dans le cadre d'un projet de recherche du departement d'informatique. Nous remercions Nicolas Baskiotis et Benjamin Maudet pour leur encadrement tout au long de ce projet.
