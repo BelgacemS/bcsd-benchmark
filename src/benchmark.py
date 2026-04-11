@@ -23,6 +23,22 @@ def load_index(emb_dir):
         return json.load(f)
 
 
+def filter_index_by_split(index, split_path):
+    # filtre l'index pour ne garder que les problemes du split test
+    # evite le data leakage quand on evalue un modele fine-tune
+    with open(split_path) as f:
+        split = json.load(f)
+    test_probs = set(split.get("test", []))
+    if not test_probs:
+        print("  ATTENTION: split test vide, pas de filtrage")
+        return index
+    filtered = {k: v for k, v in index.items()
+                if v.get("problem", "") in test_probs}
+    print(f"  filtrage split test: {len(filtered)}/{len(index)} fonctions "
+          f"({len(test_probs)} problemes test)")
+    return filtered
+
+
 def parse_config_key(key):
     last = key.rfind("_")
     optim = key[last + 1:]
@@ -82,16 +98,24 @@ def build_cross_optim_pairs(index, approach):
     pairs = []
     skipped = 0
     by_func = defaultdict(dict)
+    all_optims = set()
     for key, entry in index.items():
         sid = entry.get("source_id", "")
         fname = entry.get("function", "")
         for ck in entry["embeddings"].get(approach, {}):
             comp, arch, opt = parse_config_key(ck)
             by_func[(sid, fname, comp, arch)][opt] = (key, ck)
+            all_optims.add(opt)
+    # nb max de paires si tous les niveaux d'optim sont presents
+    n_all = len(all_optims)
+    max_pairs_per_group = n_all * (n_all - 1) // 2
     for (sid, fname, comp, arch), opt_map in by_func.items():
         opts = list(opt_map.keys())
-        for i in range(len(opts)):
-            for j in range(i + 1, len(opts)):
+        n = len(opts)
+        # paires manquantes = fonctions inlinees a haute optim
+        skipped += max_pairs_per_group - n * (n - 1) // 2
+        for i in range(n):
+            for j in range(i + 1, n):
                 k1, ck1 = opt_map[opts[i]]
                 k2, ck2 = opt_map[opts[j]]
                 pairs.append((k1, ck1, k2, ck2))
@@ -99,14 +123,17 @@ def build_cross_optim_pairs(index, approach):
 
 
 def build_cross_implementation_pairs(index, approach):
-    by_pl = defaultdict(list)
+    # on groupe par (problem, lang, function_name) pour ne comparer que
+    # les fonctions de meme nom entre implementations differentes
+    by_plf = defaultdict(list)
     for key, entry in index.items():
         prob = entry.get("problem", "")
         lang = entry.get("lang", "")
-        if prob and lang:
-            by_pl[(prob, lang)].append(key)
+        fname = entry.get("function", "")
+        if prob and lang and fname:
+            by_plf[(prob, lang, fname)].append(key)
     pairs = []
-    for keys in by_pl.values():
+    for keys in by_plf.values():
         if len(keys) < 2:
             continue
         for i in range(len(keys)):
@@ -122,13 +149,16 @@ def build_cross_implementation_pairs(index, approach):
 
 
 def build_cross_language_pairs(index, approach):
-    by_prob = defaultdict(list)
+    # on groupe par (problem, function_name) pour ne comparer que
+    # les fonctions de meme nom entre langages differents
+    by_pf = defaultdict(list)
     for key, entry in index.items():
         prob = entry.get("problem", "")
-        if prob:
-            by_prob[prob].append(key)
+        fname = entry.get("function", "")
+        if prob and fname:
+            by_pf[(prob, fname)].append(key)
     pairs = []
-    for keys in by_prob.values():
+    for keys in by_pf.values():
         if len(keys) < 2:
             continue
         for i in range(len(keys)):
@@ -617,8 +647,16 @@ if __name__ == "__main__":
     else:
         to_run = sorted(approaches_found)
 
+    # split de fine-tuning pour eviter le data leakage
+    ft_split = Path("data/finetune/split.json")
+
     for approach in to_run:
-        matrix, key_to_idx = preload_embeddings(index, approach)
-        run_benchmark(approach, index, cfg, results_dir, matrix, key_to_idx)
+        # si approche fine-tunee et split dispo, on filtre sur le test set
+        if approach.endswith("_ft") and ft_split.exists():
+            eval_index = filter_index_by_split(index, ft_split)
+        else:
+            eval_index = index
+        matrix, key_to_idx = preload_embeddings(eval_index, approach)
+        run_benchmark(approach, eval_index, cfg, results_dir, matrix, key_to_idx)
 
     print("\nBenchmark termine")
