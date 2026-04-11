@@ -203,7 +203,13 @@ def run_approach(approach, encoder_fn, cfg, disasm_dir, emb_base):
 
     print(f"\n{len(json_files)} fichiers de disasm")
 
-    index = {}
+    # charger l'index existant pour ne pas ecraser les autres approches
+    index_path = emb_base / "index.json"
+    if index_path.exists():
+        with open(index_path) as f:
+            index = json.load(f)
+    else:
+        index = {}
     nb_total = 0
 
     for jf in tqdm(json_files, desc=f"Embeddings {approach}"):
