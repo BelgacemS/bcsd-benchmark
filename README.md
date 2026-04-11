@@ -40,7 +40,7 @@ flowchart LR
     E --> F["Benchmark\n1 000 runs\n4 pair types × 3 pools"]
 ```
 
-## Structure du repository
+## Structure du projet
 
 ```
 bcsd-benchmark/
@@ -60,7 +60,7 @@ bcsd-benchmark/
 │   ├── jtrans/                 # Modèle jTrans
 │   └── refuse/                 # Modèle REFuSE (JAX/Flax)
 ├── scripts/                    # Scripts shell de parallélisation pour GCP
-├── data/                       # Binaires, désassemblage, embeddings (hors VCS)
+├── data/                       # Échantillon de test pour validation locale
 ├── results/                    # Sorties du benchmark, métriques et graphes
 ├── config.yaml                 # Configuration du pipeline et du benchmark
 └── requirements.txt            # Dépendances Python
@@ -77,7 +77,7 @@ bcsd-benchmark/
 ### Mise en place
 
 ```bash
-git clone https://github.com/[YOUR_USERNAME]/bcsd-benchmark.git
+git clone https://github.com/BelgacemS/bcsd-benchmark.git
 cd bcsd-benchmark
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -119,7 +119,7 @@ python3 src/finetune_palmtree.py    # Fine-tuning contrastif de PalmTree
 
 Le dataset est construit à partir de trois plateformes de programmation compétitive : RosettaCode (~1 300 tâches), LeetCode (~3 200 tâches) et AtCoder (~1 370 tâches, seule source de cross-implémentation). Il totalise 27 940 fichiers sources en C et C++. Après compilation et désassemblage, 5 212 problèmes et 17 765 fonctions sont présents dans l'index d'embeddings.
 
-Le repository inclut uniquement un petit échantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, désassemblage, embeddings) est hébergé sur Google Cloud Storage :
+Le projet inclut uniquement un petit échantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, désassemblage, embeddings) est hébergé sur Google Cloud Storage :
 
 ```bash
 gsutil -m cp -r gs://bscd-database/sources/ data/sources/
@@ -157,4 +157,4 @@ Les métriques détaillées, distributions de similarité, courbes ROC et heatma
 
 ## Remerciements
 
-Ce travail a été réalisé à Sorbonne Université dans le cadre d'un projet de recherche du département d'informatique. Nous remercions Nicolas Baskiotis et Benjamin Maudet pour leur encadrement tout au long de ce projet.
+Ce travail a été effectué dans le cadre de l'UE Projet de Recherche à Sorbonne Université. Nous remercions Nicolas Baskiotis et Benjamin Maudet pour leur encadrement tout au long de ce projet.
