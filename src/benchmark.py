@@ -202,86 +202,106 @@ def build_prob_pools(index, key_to_idx, approach, n_total):
     return idx_to_prob, prob_pools
 
 
-def run_pool_experiment_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries=5000, prob_pools=None, idx_to_prob=None):
+def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, seed, n_runs, max_queries=5000, prob_pools=None, idx_to_prob=None):
+    n_total = matrix.shape[0]
+    nb_distract = min(pool_sz - 1, n_total - 2)
+    empty = {"nb_queries": 0, "recall_at_1": {"mean": 0, "std": 0}, "mrr": {"mean": 0, "std": 0}, "roc_auc": None}
+    if nb_distract < 1:
+        return empty, np.array([]), np.array([])
+
+    # echantillonner les paires une seule fois
+    rng_init = np.random.default_rng(seed)
     if len(pairs) > max_queries:
-        sample_idx = rng.choice(len(pairs), size=max_queries, replace=False)
+        sample_idx = rng_init.choice(len(pairs), size=max_queries, replace=False)
         sampled = [pairs[i] for i in sample_idx]
     else:
         sampled = pairs
 
-    n_total = matrix.shape[0]
-    nb_distract = min(pool_sz - 1, n_total - 2)
-    if nb_distract < 1:
-        return [], [], []
-
-    # resolve les paires en indices
+    # resoudre en indices numpy
     valid = []
     for q_key, q_ck, p_key, p_ck in sampled:
         qi = key_to_idx.get((q_key, q_ck))
         pi = key_to_idx.get((p_key, p_ck))
         if qi is not None and pi is not None:
-            valid.append((qi, pi, str(idx_to_prob[qi])))
-
+            valid.append((qi, pi))
     if not valid:
-        return [], [], []
+        return empty, np.array([]), np.array([])
 
-    ranks = []
-    pos_sims = []
-    neg_sims_all = []
+    qi_all = np.array([qi for qi, pi in valid], dtype=np.intp)
+    pi_all = np.array([pi for qi, pi in valid], dtype=np.intp)
+    N = len(valid)
 
-    for qi, pi, q_prob in valid:
-        # pool precalcule, juste exclure qi et pi
-        pool = prob_pools.get(q_prob, np.arange(n_total))
-        pool = pool[(pool != qi) & (pool != pi)]
+    # precalcul des vecteurs queries et positifs (fixe pour tous les runs)
+    Q = matrix[qi_all]  # [N, dim]
+    P = matrix[pi_all]  # [N, dim]
+    pos_sims_fixed = np.einsum("ij,ij->i", Q, P)  # [N]
 
-        actual = min(nb_distract, len(pool))
-        if actual < 1:
-            continue
-        d_idxs = rng.choice(pool, size=actual, replace=False)
+    # IDs de probleme en entiers pour comparaison rapide
+    _, prob_int = np.unique(idx_to_prob, return_inverse=True)
+    qi_prob = prob_int[qi_all]  # [N]
 
-        # similarite cosinus (matrice deja normalisee)
-        q_vec = matrix[qi]
-        p_sim = float(np.dot(q_vec, matrix[pi]))
-        d_sims = matrix[d_idxs] @ q_vec
+    # mapping pour exclure qi/pi des distracteurs
+    d_pos_map = np.empty(n_total, dtype=np.intp)
 
-        rank = 1 + int(np.sum(d_sims >= p_sim))
-        ranks.append(rank)
-        pos_sims.append(p_sim)
-        rng.shuffle(d_sims)
-        neg_sims_all.extend(d_sims[:200].tolist())
-
-    return ranks, pos_sims, neg_sims_all
-
-
-def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, seed, n_runs, max_queries=5000, prob_pools=None, idx_to_prob=None):
     all_r1 = []
     all_mrr = []
     all_auc = []
-    last_pos = []
-    last_neg = []
+    last_pos = pos_sims_fixed
+    last_neg = np.array([])
+    import time
+    t0 = time.time()
 
     for run in range(n_runs):
-        rng = np.random.RandomState(seed + run)
-        ranks, pos_s, neg_s = run_pool_experiment_fast(
-            matrix, key_to_idx, index, approach, pairs, pool_sz, rng, max_queries,
-            prob_pools=prob_pools, idx_to_prob=idx_to_prob
-        )
-        if not ranks:
-            continue
-        r = np.array(ranks)
-        all_r1.append(float(np.mean(r == 1)))
-        all_mrr.append(float(np.mean(1.0 / r)))
-        if pos_s and neg_s:
-            labels = [1] * len(pos_s) + [0] * len(neg_s)
-            scores = list(pos_s) + list(neg_s)
+        rng = np.random.default_rng(seed + run + 1)
+
+        # un seul tirage de distracteurs pour tout le run
+        d_idxs = rng.choice(n_total, size=nb_distract, replace=False)
+        D = matrix[d_idxs]  # [nb_distract, dim]
+
+        # un seul matmul global : [N, dim] @ [dim, nb_distract]
+        d_sims = Q @ D.T  # [N, nb_distract]
+
+        # masquer les distracteurs du meme probleme que la query
+        d_prob = prob_int[d_idxs]  # [nb_distract]
+        same = qi_prob[:, None] == d_prob[None, :]  # [N, nb_distract]
+        d_sims[same] = -np.inf
+
+        # masquer qi et pi s'ils sont dans les distracteurs
+        d_pos_map[:] = -1
+        d_pos_map[d_idxs] = np.arange(nb_distract)
+        for arr in [qi_all, pi_all]:
+            cols = d_pos_map[arr]
+            hit = cols >= 0
+            if hit.any():
+                d_sims[np.where(hit)[0], cols[hit]] = -np.inf
+
+        # rangs vectorises (un seul np.sum sur toute la matrice)
+        ranks = 1 + np.sum(d_sims >= pos_sims_fixed[:, None], axis=1)
+
+        all_r1.append(float(np.mean(ranks == 1)))
+        all_mrr.append(float(np.mean(1.0 / ranks)))
+
+        # neg sims pour AUC (sample rapide)
+        nb_neg = min(N * 5, 10000)
+        rows = rng.integers(0, N, size=nb_neg)
+        cols = rng.integers(0, nb_distract, size=nb_neg)
+        neg_s = d_sims[rows, cols]
+        neg_s = neg_s[np.isfinite(neg_s)]
+        if len(neg_s) > 0:
+            labels = np.concatenate([np.ones(N), np.zeros(len(neg_s))])
+            scores = np.concatenate([pos_sims_fixed, neg_s])
             try:
                 all_auc.append(float(roc_auc_score(labels, scores)))
             except ValueError:
                 pass
-        last_pos = pos_s
         last_neg = neg_s
 
-    last_nb = len(ranks) if ranks else 0
+        if (run + 1) % 10 == 0:
+            elapsed = time.time() - t0
+            eta = elapsed / (run + 1) * (n_runs - run - 1)
+            print(f"      run {run+1}/{n_runs} ({elapsed:.0f}s, ETA {eta:.0f}s)", flush=True)
+
+    last_nb = N
     res = {"nb_queries": last_nb}
     if all_r1:
         res["recall_at_1"] = {"mean": float(np.mean(all_r1)), "std": float(np.std(all_r1))}
@@ -300,9 +320,9 @@ def run_multi_pool_fast(matrix, key_to_idx, index, approach, pairs, pool_sz, see
 
 def plot_similarity_distribution(pos_sims, neg_sims, out_path):
     plt.figure(figsize=(10, 6))
-    if pos_sims:
+    if len(pos_sims) > 0:
         plt.hist(pos_sims, bins=30, alpha=0.6, label="Positifs", color="green", density=True)
-    if neg_sims:
+    if len(neg_sims) > 0:
         plt.hist(neg_sims, bins=30, alpha=0.6, label="Negatifs", color="red", density=True)
     plt.xlabel("Similarite cosinus")
     plt.ylabel("Densite")
@@ -317,7 +337,7 @@ def plot_similarity_distribution(pos_sims, neg_sims, out_path):
 def plot_roc_curves(roc_data, out_path):
     plt.figure(figsize=(8, 8))
     for label, (labs, scores) in roc_data.items():
-        if not labs or len(set(labs)) < 2:
+        if len(labs) == 0 or len(np.unique(labs)) < 2:
             continue
         fpr, tpr, _ = roc_curve(labs, scores)
         auc = roc_auc_score(labs, scores)
@@ -514,8 +534,10 @@ def run_benchmark(approach, index, cfg, results_dir, matrix, key_to_idx):
             )
             pk = f"pool_{pool_sz}"
             pt_res["pools"][pk] = metrics
-            all_pos.extend(pos_s)
-            all_neg.extend(neg_s)
+            if len(pos_s) > 0:
+                all_pos.append(pos_s)
+            if len(neg_s) > 0:
+                all_neg.append(neg_s)
 
             r1 = metrics.get("recall_at_1", {})
             mrr = metrics.get("mrr", {})
@@ -527,14 +549,19 @@ def run_benchmark(approach, index, cfg, results_dir, matrix, key_to_idx):
 
             recall_pts[pool_sz] = r1 if isinstance(r1, dict) else {"mean": 0, "std": 0}
 
-            if pool_sz == max(pool_sizes) and pos_s and neg_s:
-                roc_data[pt_name] = ([1]*len(pos_s) + [0]*len(neg_s), list(pos_s) + list(neg_s))
+            if pool_sz == max(pool_sizes) and len(pos_s) > 0 and len(neg_s) > 0:
+                roc_data[pt_name] = (
+                    np.concatenate([np.ones(len(pos_s)), np.zeros(len(neg_s))]),
+                    np.concatenate([pos_s, neg_s])
+                )
 
         results[pt_name] = pt_res
         recall_data[pt_name] = recall_pts
 
     # plots
-    if all_pos or all_neg:
+    all_pos = np.concatenate(all_pos) if all_pos else np.array([])
+    all_neg = np.concatenate(all_neg) if all_neg else np.array([])
+    if len(all_pos) > 0 or len(all_neg) > 0:
         plot_similarity_distribution(all_pos, all_neg, out_dir / "similarity_distribution.png")
     if roc_data:
         plot_roc_curves(roc_data, out_dir / "roc_curve.png")
