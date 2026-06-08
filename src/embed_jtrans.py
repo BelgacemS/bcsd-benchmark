@@ -24,13 +24,17 @@ if not JTRANS_DIR.exists():
 
 MAXLEN = 512
 
-# detection GPU
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-else:
-    DEVICE = torch.device("cpu")
-    print("CPU mode (pas de GPU detecte)")
+# detection auto GPU/CPU (surchargeable via --device)
+def detect_device(choice="auto"):
+    if choice == "cuda" or (choice == "auto" and torch.cuda.is_available()):
+        dev = torch.device("cuda")
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        return dev
+    print("Mode CPU (pas de GPU detecte ou force --device cpu)")
+    return torch.device("cpu")
+
+# defaut auto, re-evalue dans __main__ selon --device
+DEVICE = detect_device("auto")
 
 
 # --- vocabulaire jTrans (identique a data.py du papier) ---
@@ -265,10 +269,14 @@ class JTransEncoder:
 
         self.model = BinBertModel.from_pretrained(str(model_dir))
         self.model.to(self.device)
-        self.model.half()  # fp16 pour perf
+        # fp16 seulement sur GPU : sur CPU le fp16 n'est pas accelere et
+        # certaines operations ne sont pas supportees -> on reste en fp32
+        self.fp16 = self.device.type == "cuda"
+        if self.fp16:
+            self.model.half()
         self.model.eval()
         self.batch_size = 128
-        print("  jTrans pret (fp16)")
+        print(f"  jTrans pret ({'fp16' if self.fp16 else 'fp32'}, {self.device})")
 
     def encode_batch(self, func_strs, vocab):
         if not func_strs:
@@ -453,7 +461,11 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--test", action="store_true",
                         help="mode test, limite a 50 fichiers")
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto",
+                        help="forcer cpu ou cuda (defaut: auto)")
     args = parser.parse_args()
+
+    DEVICE = detect_device(args.device)
 
     cfg = load_config(args.config)
     paths = cfg["paths"]
