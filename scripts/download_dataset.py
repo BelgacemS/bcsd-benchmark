@@ -30,9 +30,7 @@ ARCHIVES = {
     "disasm": "disasm.tar.zst",
     "sources": "sources.tar.zst",
     "binaries": "binaries.tar.zst",
-    # disasm_jtrans est volontairement absent : l'archive publiee est
-    # corrompue cote Hub (12 Ko, pas un flux zstd valide). Les vecteurs
-    # jTrans sont de toute facon deja inclus dans embeddings.tar.zst.
+    "disasm_jtrans": "disasm_jtrans.tar.zst",
 }
 
 ROOT = Path(__file__).resolve().parent.parent

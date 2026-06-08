@@ -118,11 +118,18 @@ Le dépôt n'inclut qu'un petit échantillon de test dans `data/sources/_test/`,
 python3 scripts/download_dataset.py embeddings   # data/embeddings/ (~540 Mo) — requis pour le benchmark
 python3 scripts/download_dataset.py disasm       # data/disasm/     (~6 Mo)   — JSON de désassemblage
 python3 scripts/download_dataset.py sources      # data/sources/    (~22 Mo)  — sources C/C++
-python3 scripts/download_dataset.py binaries     # data/binaries/   (~1 Go)   — exécutables ELF
+python3 scripts/download_dataset.py binaries     # data/binaries/      (~1 Go)  — exécutables ELF
+python3 scripts/download_dataset.py disasm_jtrans # data/disasm_jtrans/ (~99 Mo) — disasm par blocs (jTrans)
 python3 scripts/download_dataset.py all          # tout d'un coup
 ```
 
-> **Note** — l'archive `disasm_jtrans` du Hub est corrompue (upload invalide) ; elle est donc volontairement ignorée par le script. Ce n'est pas gênant : les embeddings jTrans sont déjà inclus dans `embeddings.tar.zst`. Pour les régénérer, voir la section avancée ci-dessous.
+> **Réindexer jTrans** — si l'`index.json` des embeddings a des entrées jTrans malformées (le benchmark ne forme aucune paire jTrans), reconstruis-les **sans modèle** à partir des `.npy` déjà présents et de `data/disasm_jtrans/` :
+>
+> ```bash
+> python3 scripts/download_dataset.py disasm_jtrans
+> python3 scripts/rebuild_jtrans_index.py
+> python3 src/benchmark.py --approach jtrans
+> ```
 
 ## Régénérer les embeddings (avancé, GPU recommandé)
 
