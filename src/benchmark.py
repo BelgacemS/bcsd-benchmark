@@ -20,7 +20,37 @@ def load_config(path="config.yaml"):
 
 def load_index(emb_dir):
     with open(Path(emb_dir) / "index.json") as f:
-        return json.load(f)
+        index = json.load(f)
+    return normalize_config_keys(index)
+
+
+def normalize_config_keys(index):
+    # La config_key (compiler_arch_optim) est parfois malformee dans l'index
+    # (ex: embeddings jTrans generes avec un dossier disasm_jtrans en trop, ce
+    # qui produit "disasm_jtrans_clang_x86_64" au lieu de "clang_x86_64_Os" et
+    # ecrase les niveaux d'optim entre eux). Le chemin du .npy contient lui la
+    # verite terrain (.../<comp>/x86_64/<optim>/...). On reconstruit donc la
+    # cle a partir du chemin, en ancrant sur le composant d'architecture.
+    # Pour les approches deja saines (palmtree, baseline, refuse) c'est un no-op.
+    n_fixed = 0
+    for entry in index.values():
+        for approach, cfgs in entry.get("embeddings", {}).items():
+            rebuilt = {}
+            for ck, info in cfgs.items():
+                parts = str(info.get("path", "")).split("/")
+                good = ck
+                if "x86_64" in parts:
+                    i = parts.index("x86_64")
+                    if 0 < i < len(parts) - 1:
+                        good = f"{parts[i - 1]}_{parts[i]}_{parts[i + 1]}"
+                if good != ck:
+                    n_fixed += 1
+                # en cas de collision (cle deja presente), on garde la 1re
+                rebuilt.setdefault(good, info)
+            entry["embeddings"][approach] = rebuilt
+    if n_fixed:
+        print(f"  config_keys corrigees depuis les chemins: {n_fixed}")
+    return index
 
 
 def resolve_npy_path(stored_path, emb_dir):
