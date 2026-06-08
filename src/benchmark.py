@@ -23,6 +23,34 @@ def load_index(emb_dir):
         return json.load(f)
 
 
+def resolve_npy_path(stored_path, emb_dir):
+    # les chemins de l'index sont relatifs a la racine du repo (ex:
+    # "data/embeddings/palmtree/...") ou peuvent venir d'une autre machine
+    # (chemin absolu d'une VM). On les resout par rapport au dossier
+    # d'embeddings local pour que le benchmark marche peu importe ou les
+    # archives ont ete extraites ou le CWD utilise.
+    p = Path(stored_path)
+    if p.exists():
+        return p
+    emb_dir = Path(emb_dir)
+    parts = p.parts
+    # on coupe apres la derniere occurrence du nom du dossier d'embeddings
+    name = emb_dir.name
+    if name in parts:
+        i = len(parts) - 1 - parts[::-1].index(name)
+        cand = emb_dir.joinpath(*parts[i + 1:])
+        if cand.exists():
+            return cand
+    # secours : le segment <approach>/<compiler>/<arch>/<optim>/.../file.npy
+    # est toujours sous emb_dir
+    if "embeddings" in parts:
+        i = len(parts) - 1 - parts[::-1].index("embeddings")
+        cand = emb_dir.joinpath(*parts[i + 1:])
+        if cand.exists():
+            return cand
+    return p
+
+
 def filter_index_by_split(index, split_path):
     # filtre l'index pour ne garder que les problemes du split test
     # evite le data leakage quand on evalue un modele fine-tune
@@ -49,7 +77,7 @@ def parse_config_key(key):
 
 # on precharge TOUS les embeddings en un gros array numpy
 # chaque embedding est identifie par un (func_key, config_key) -> idx dans la matrice
-def preload_embeddings(index, approach):
+def preload_embeddings(index, approach, emb_dir="data/embeddings"):
     print("  chargement des embeddings en RAM...", end=" ", flush=True)
     emb_list = []
     key_to_idx = {}
@@ -61,7 +89,7 @@ def preload_embeddings(index, approach):
         for ck, info in entry.get("embeddings", {}).get(approach, {}).items():
             path = info["path"]
             if path not in npy_cache:
-                npy_cache[path] = np.load(path)
+                npy_cache[path] = np.load(resolve_npy_path(path, emb_dir))
             vec = npy_cache[path][info["idx"]]
             emb_list.append(vec)
             key_to_idx[(func_key, ck)] = idx
@@ -656,7 +684,7 @@ if __name__ == "__main__":
             eval_index = filter_index_by_split(index, ft_split)
         else:
             eval_index = index
-        matrix, key_to_idx = preload_embeddings(eval_index, approach)
+        matrix, key_to_idx = preload_embeddings(eval_index, approach, emb_dir)
         run_benchmark(approach, eval_index, cfg, results_dir, matrix, key_to_idx)
 
     print("\nBenchmark termine")
