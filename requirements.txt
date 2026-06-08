@@ -1,3 +1,7 @@
+# telechargement du dataset (Hugging Face)
+huggingface_hub>=0.23
+zstandard>=0.21          # secours si le binaire `zstd` n'est pas installe
+
 # scraping
 requests>=2.28
 tqdm>=4.60
@@ -9,6 +13,9 @@ python-dotenv>=0.19
 pyyaml>=6.0
 angr>=9.2
 numpy>=1.24,<2
+# torch : la roue par defaut inclut le support CPU ET CUDA et est detectee
+# automatiquement a l'execution. Pour une machine 100% CPU et une install plus
+# legere : pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.4,<2.6
 transformers>=4.30,<4.50
 scipy>=1.10

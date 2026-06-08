@@ -16,6 +16,7 @@ data/binaries/
 data/disasm/
 data/disasm_jtrans/
 data/embeddings/
+data/_hf_cache/
 data/compile_manifest.json
 *.o
 compile_all.sh
