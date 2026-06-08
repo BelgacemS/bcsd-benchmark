@@ -88,12 +88,19 @@ def load_refuse(repo_root, ckpt_path, trim_len, emb_dim):
 
     sys.path.insert(0, str(refuse_dir))
 
-    import jax
-    from jax import numpy as jnp
-    import optax
-    from flax.training.train_state import TrainState
-    from flax.training import checkpoints
-    from utils.net_modules import REFUSE
+    try:
+        import jax
+        from jax import numpy as jnp
+        import optax
+        from flax.training.train_state import TrainState
+        from flax.training import checkpoints
+        from utils.net_modules import REFUSE
+    except ImportError as e:
+        print(f"Erreur: dependances REFuSE (JAX/Flax/optax) manquantes: {e}")
+        print("  installe-les :  pip install -r requirements.txt")
+        print("  (les embeddings REFuSE sont deja inclus dans le dataset Hugging Face,")
+        print("   cette etape n'est utile que pour les regenerer)")
+        sys.exit(1)
 
     net = REFUSE(channels=emb_dim, window_size=8, stride=8, embd_size=8, log_stride=None)
 
