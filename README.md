@@ -59,7 +59,9 @@ bcsd-benchmark/
 │   ├── palmtree/               # Modèle transformer PalmTree
 │   ├── jtrans/                 # Modèle jTrans
 │   └── refuse/                 # Modèle REFuSE (JAX/Flax)
-├── scripts/                    # Scripts shell de parallélisation pour GCP
+├── scripts/                    # Utilitaires
+│   ├── download_dataset.py     # Téléchargement du dataset depuis Hugging Face
+│   └── ...                     # Scripts shell de parallélisation GCP
 ├── data/                       # Échantillon de test pour validation locale
 ├── results/                    # Sorties du benchmark, métriques et graphes
 ├── config.yaml                 # Configuration du pipeline et du benchmark
@@ -70,9 +72,9 @@ bcsd-benchmark/
 
 ### Prérequis
 
-- Python 3.10+
-- GCC et Clang (étape de compilation)
-- GPU compatible CUDA (optionnel, accélère la génération d'embeddings)
+- **Python 3.10+**
+- **GCC et Clang** — uniquement pour l'étape de compilation (pas nécessaire pour reproduire le benchmark)
+- **GPU compatible CUDA** — *optionnel*. Le code détecte automatiquement le GPU et l'utilise en priorité ; à défaut il bascule sur le CPU. Le GPU n'accélère que la **génération** des embeddings : le benchmark lui-même tourne très bien sur CPU.
 
 ### Mise en place
 
@@ -83,49 +85,78 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Configuration
+> **Machine sans GPU ?** Aucune action requise : tout fonctionne sur CPU. Pour une installation PyTorch plus légère (sans les paquets CUDA), tu peux remplacer l'install de torch par :
+> `pip install torch --index-url https://download.pytorch.org/whl/cpu`
 
-Tous les paramètres du pipeline (compilateurs, niveaux d'optimisation, backend de désassemblage, approches d'embedding, métriques, tailles de pool) sont définis dans `config.yaml`.
+## Démarrage rapide — reproduire le benchmark
 
-Pour le déploiement sur GCP, le CLI `gcloud` doit être authentifié avec accès au bucket `gs://bscd-database/`.
-
-## Utilisation
-
-### Pipeline local (sample)
+Le benchmark ne nécessite **ni GPU, ni compilation, ni désassemblage** : il réutilise les embeddings déjà calculés, hébergés sur [Hugging Face](https://huggingface.co/datasets/BelgacemS/bcsd-benchmark). Trois commandes suffisent :
 
 ```bash
-python3 src/compile.py --test       # Compiler les sources de test en ELF
-python3 src/disasm.py --test        # Désassembler les binaires avec angr
-python3 src/embed_palmtree.py       # Générer les embeddings PalmTree
-python3 src/embed_baseline.py       # Calculer les vecteurs baseline
-python3 src/benchmark.py            # Lancer l'évaluation
+pip install -r requirements.txt                  # 1. dépendances
+python3 scripts/download_dataset.py embeddings    # 2. télécharger les embeddings (~540 Mo)
+python3 src/benchmark.py                          # 3. lancer l'évaluation
 ```
 
-### Pipeline complet (GCP)
+Le script `download_dataset.py` télécharge l'archive depuis Hugging Face et l'extrait dans `data/embeddings/` (`index.json` + vecteurs `.npy`, 17 765 fonctions). `benchmark.py` charge tout en RAM et écrit les métriques, rapports et graphes dans `results/{approche}/`. L'index couvre quatre approches directement évaluables : `palmtree`, `jtrans`, `baseline`, `refuse`. La variante fine-tunée `palmtree_ft` (présente comme dossier de vecteurs) nécessite de régénérer son entrée d'index avec le split de fine-tuning — voir la section avancée.
+
+Pour n'évaluer qu'une seule approche :
 
 ```bash
-python3 src/gcp_build.py --phases compile disasm
-python3 src/gcp_build.py --phases embed
-python3 src/gcp_build.py --phases benchmark
+python3 src/benchmark.py --approach palmtree     # palmtree | jtrans | baseline | refuse
 ```
 
-### Fine-tuning
-
-```bash
-python3 src/finetune_palmtree.py    # Fine-tuning contrastif de PalmTree
-```
+Les paramètres (tailles de pool, nombre de runs, types de paires) se règlent dans `config.yaml`, section `pipeline.benchmark`.
 
 ## Données
 
 Le dataset est construit à partir de trois plateformes de programmation compétitive : RosettaCode (~1 300 tâches), LeetCode (~3 200 tâches) et AtCoder (~1 370 tâches, seule source de cross-implémentation). Il totalise 27 940 fichiers sources en C et C++. Après compilation et désassemblage, 5 212 problèmes et 17 765 fonctions sont présents dans l'index d'embeddings.
 
-Le projet inclut uniquement un petit échantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet (sources, binaires, désassemblage, embeddings) est hébergé sur Google Cloud Storage :
+Le dépôt n'inclut qu'un petit échantillon de test dans `data/sources/_test/`, suffisant pour valider le pipeline localement. Le dataset complet est hébergé sur Hugging Face : [`BelgacemS/bcsd-benchmark`](https://huggingface.co/datasets/BelgacemS/bcsd-benchmark). Le script de téléchargement gère chaque archive et l'extrait au bon endroit sous `data/` :
 
 ```bash
-gsutil -m cp -r gs://bscd-database/sources/ data/sources/
-gsutil -m cp -r gs://bscd-database/disasm/ data/disasm/
-gsutil -m cp -r gs://bscd-database/embeddings/ data/embeddings/
+python3 scripts/download_dataset.py embeddings   # data/embeddings/ (~540 Mo) — requis pour le benchmark
+python3 scripts/download_dataset.py disasm       # data/disasm/     (~6 Mo)   — JSON de désassemblage
+python3 scripts/download_dataset.py sources      # data/sources/    (~22 Mo)  — sources C/C++
+python3 scripts/download_dataset.py binaries     # data/binaries/   (~1 Go)   — exécutables ELF
+python3 scripts/download_dataset.py all          # tout d'un coup
 ```
+
+> **Note** — l'archive `disasm_jtrans` du Hub est corrompue (upload invalide) ; elle est donc volontairement ignorée par le script. Ce n'est pas gênant : les embeddings jTrans sont déjà inclus dans `embeddings.tar.zst`. Pour les régénérer, voir la section avancée ci-dessous.
+
+## Régénérer les embeddings (avancé, GPU recommandé)
+
+Cette étape n'est utile que pour recalculer les vecteurs depuis le désassemblage (par ex. après un fine-tuning). Le GPU est détecté automatiquement ; ajoute `--device cpu` ou `--device cuda` pour forcer.
+
+```bash
+python3 scripts/download_dataset.py disasm        # récupère data/disasm/
+python3 src/embed_palmtree.py                     # embeddings PalmTree  (--device auto|cpu|cuda)
+python3 src/embed_jtrans.py                        # embeddings jTrans    (--device auto|cpu|cuda)
+python3 src/embed_baseline.py                      # features baseline    (CPU, pas de modèle)
+python3 src/embed_refuse.py                        # embeddings REFuSE    (JAX, GPU/CPU auto)
+python3 src/benchmark.py                            # ré-évaluation
+```
+
+Les poids pré-entraînés (PalmTree `transformer.ep19`, modèle jTrans, checkpoint REFuSE) ne sont pas inclus dans le dépôt ; place-les dans `lib/{palmtree,jtrans,refuse}/` comme indiqué dans chaque script. REFuSE et `embed_refuse.py` requièrent en plus les sources du modèle REFuSE clonées dans `lib/refuse/`.
+
+### Pipeline de bout en bout (depuis les sources)
+
+```bash
+python3 src/compile.py --test       # Compiler les sources de test en ELF (GCC + Clang)
+python3 src/disasm.py --test        # Désassembler avec angr
+python3 src/embed_palmtree.py       # Générer les embeddings
+python3 src/benchmark.py            # Évaluer
+```
+
+### Fine-tuning de PalmTree
+
+```bash
+python3 src/finetune_palmtree.py    # Fine-tuning contrastif (perte InfoNCE), GPU recommandé
+```
+
+### Pipeline distribué (GCP, optionnel)
+
+L'orchestration GCP (`src/gcp_build.py`) reste disponible pour qui dispose d'un bucket et d'un `gcloud` authentifié ; elle n'est pas nécessaire pour reproduire les résultats à partir de Hugging Face.
 
 ## Résultats
 
